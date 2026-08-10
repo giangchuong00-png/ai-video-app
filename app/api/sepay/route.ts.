@@ -1,0 +1,61 @@
+import { NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+const supabase = createClient(supabaseUrl, supabaseAnonKey)
+
+export async function POST(request: Request) {
+  try {
+    const body = await request.json()
+    const authHeader = request.headers.get('authorization')
+
+    // 1. Xác nhận Secret Key từ SePay
+    const expectedSecret = process.env.SEPAY_WEBHOOK_SECRET
+    if (expectedSecret && authHeader !== `Apikey ${expectedSecret}`) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const { content, transferAmount } = body
+
+    if (!content || !transferAmount) {
+      return NextResponse.json({ message: 'No content or amount' }, { status: 200 })
+    }
+
+    // 2. Tỷ lệ quy đổi: Cứ 1.000 VNĐ = 1 Credit (20.000 VNĐ = 20 Credits)
+    const creditsToAdd = Math.floor(transferAmount / 1000)
+
+    if (creditsToAdd <= 0) {
+      return NextResponse.json({ message: 'Amount too low' }, { status: 200 })
+    }
+
+    // 3. Tìm email người dùng trong nội dung chuyển khoản
+    const emailMatch = content.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/)
+
+    if (emailMatch) {
+      const userEmail = emailMatch[0].toLowerCase()
+
+      // Lấy số dư hiện tại của user
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('credits')
+        .eq('email', userEmail)
+        .single()
+
+      if (profile) {
+        // Cộng dồn Credits mới vào tài khoản
+        const newCredits = (profile.credits || 0) + creditsToAdd
+
+        await supabase
+          .from('profiles')
+          .update({ credits: newCredits })
+          .eq('email', userEmail)
+      }
+    }
+
+    return NextResponse.json({ success: true, message: 'Processed webhook successfully' })
+  } catch (error) {
+    console.error('Webhook error:', error)
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
+  }
+}
