@@ -46,7 +46,7 @@ export async function POST(req: Request) {
 
     let extractedData = "";
 
-    // 1. Tự động tìm link TikTok trong tin nhắn/URL người dùng dán vào
+    // 1. Tự động tìm link TikTok trong tin nhắn/URL
     const tiktokUrlRegex = /(https?:\/\/[^\s]+tiktok\.com[^\s]+)/gi;
     const matchedUrls = message.match(tiktokUrlRegex);
 
@@ -59,7 +59,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // 2. Tạo Prompt điều khiển AI "Sáng tạo lại 90%" kịch bản
+    // 2. Prompt điều khiển AI Sáng tạo lại 90% kịch bản
     const systemPrompt = `
 Bạn là một Chuyên gia Viết Kịch Bản Video Ngắn TikTok/Reels Affiliate triệu view.
 Nhiệm vụ của bạn: Dựa trên thông tin sản phẩm/link đối thủ được cung cấp, hãy SÁNG TẠO LẠI 90% KỊCH BẢN MỚI.
@@ -74,7 +74,7 @@ Nhiệm vụ của bạn: Dựa trên thông tin sản phẩm/link đối thủ 
 [Mô tả từ người dùng / Dữ liệu link đối thủ]: ${message} ${extractedData}
 [Thời lượng video yêu cầu]: ${duration || "15s"}
 
-[YÊU CẦU ĐẦU RA]: Bắt buộc trả về đúng định dạng JSON thuần túy (không chứa markdown \`\`\`json) theo cấu trúc:
+[YÊU CẦU ĐẦU RA]: Bắt buộc trả về đúng định dạng JSON theo cấu trúc:
 {
   "scenes": [
     {
@@ -88,37 +88,53 @@ Nhiệm vụ của bạn: Dựa trên thông tin sản phẩm/link đối thủ 
 }
     `;
 
-    // 3. Gọi Gemini API với các mô hình thế hệ 2.5 và 2.0
+    // 3. Khởi tạo Gemini Client
     const apiKey = process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY;
     if (!apiKey) {
-      return NextResponse.json({ error: "Thiếu API Key cho AI Chat" }, { status: 500 });
+      return NextResponse.json({ error: "Thiếu API Key cấu hình cho hệ thống AI." }, { status: 500 });
     }
 
     const genAI = new GoogleGenerativeAI(apiKey);
     
-    // Khai báo danh sách các mô hình chuẩn
-    const candidateModels = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.5-pro"];
+    // DANH SÁCH MODEL PRODUCTION CHIẾN LƯỢC:
+    // 1. Primary: gemini-3.6-flash (GA Stable)
+    // 2. Fallback 1: gemini-3.5-flash-lite (Siêu nhanh, rẻ, vượt Quota)
+    // 3. Fallback 2: gemini-3.1-pro-preview (Reasoning mạnh cho case khó)
+    const candidateModels = [
+      "gemini-3.6-flash",
+      "gemini-3.5-flash-lite",
+      "gemini-3.1-pro-preview"
+    ];
+
     let responseText = "";
     let apiError: any = null;
 
     for (const modelName of candidateModels) {
       try {
-        const model = genAI.getGenerativeModel({ model: modelName });
+        console.log(`🚀 [Reelbo AI] Đang gửi Request tới Model: ${modelName}...`);
+        
+        const model = genAI.getGenerativeModel({ 
+          model: modelName,
+          generationConfig: { responseMimeType: "application/json" }
+        });
+
         const result = await model.generateContent(systemPrompt);
         const resText = result.response.text();
 
         if (resText && resText.trim().length > 0) {
           responseText = resText;
-          break; // Đã lấy được dữ liệu thành công
+          console.log(`✅ [Reelbo AI] Xử lý kịch bản thành công bằng Model: ${modelName}`);
+          break; // Thành công -> Thoát khỏi vòng lặp Fallback
         }
-      } catch (err) {
+      } catch (err: any) {
         apiError = err;
-        console.warn(`Lỗi khi gọi model ${modelName}, đang thử model tiếp theo...`);
+        console.warn(`⚠️ [Reelbo AI] Model ${modelName} gặp sự cố (429/5xx/Timeout). Đang tự động chuyển mô hình dự phòng tiếp theo...`, err?.message || err);
       }
     }
 
+    // Nếu cả 3 model Gemini đều không phản hồi thành công
     if (!responseText) {
-      throw apiError || new Error("Không thể khởi tạo kịch bản từ các model Gemini.");
+      throw apiError || new Error("Hệ thống Gemini AI đang bận. Vui lòng thử lại sau giây lát.");
     }
 
     // Trích xuất chuỗi JSON an toàn
@@ -129,9 +145,9 @@ Nhiệm vụ của bạn: Dựa trên thông tin sản phẩm/link đối thủ 
 
     return NextResponse.json({ script: parsedScript });
   } catch (error: any) {
-    console.error("Lỗi API Chat:", error);
+    console.error("❌ Lỗi API Chat Backend:", error);
     return NextResponse.json(
-      { error: error.message || "Không thể khởi tạo kịch bản xào lại 90%." },
+      { error: error.message || "Không thể khởi tạo kịch bản AI. Vui lòng thử lại." },
       { status: 500 }
     );
   }
