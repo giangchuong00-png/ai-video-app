@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import GoogleGenerativeAI from "@google/generative-ai"; // Hoặc OpenAI SDK tùy bạn đang dùng
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 // Hàm hỗ trợ giải mã link rút gọn TikTok (vt.tiktok.com -> full URL)
 async function expandTiktokUrl(shortUrl: string): Promise<string> {
@@ -93,13 +93,12 @@ Nhiệm vụ của bạn: Dựa trên thông tin sản phẩm/link đối thủ 
 }
     `;
 
-    // 3. Gọi Gemini / OpenAI API (Ví dụ dùng Gemini)
+    // 3. Gọi Gemini API
     const apiKey = process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY;
     if (!apiKey) {
       return NextResponse.json({ error: "Thiếu API Key cho AI Chat" }, { status: 500 });
     }
 
-    // *Ví dụ gọi Gemini API:*
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
     const result = await model.generateContent(systemPrompt);
