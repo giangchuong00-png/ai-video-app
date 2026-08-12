@@ -1,90 +1,119 @@
-import { GoogleGenAI, Type } from "@google/genai";
 import { NextResponse } from "next/server";
+import GoogleGenerativeAI from "@google/generative-ai"; // Hoặc OpenAI SDK tùy bạn đang dùng
+
+// Hàm hỗ trợ giải mã link rút gọn TikTok (vt.tiktok.com -> full URL)
+async function expandTiktokUrl(shortUrl: string): Promise<string> {
+  try {
+    const res = await fetch(shortUrl, {
+      method: "HEAD",
+      redirect: "follow",
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      },
+    });
+    return res.url || shortUrl;
+  } catch (err) {
+    return shortUrl;
+  }
+}
+
+// Hàm hỗ trợ bóc tách thông tin tiêu đề/mô tả từ link TikTok công khai
+async function fetchTiktokMetadata(url: string) {
+  try {
+    const fullUrl = await expandTiktokUrl(url);
+    const res = await fetch(fullUrl, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      },
+    });
+    const html = await res.text();
+
+    // Lấy nội dung trong thẻ <title> hoặc <meta name="description">
+    const titleMatch = html.match(/<title>(.*?)<\/title>/i);
+    const descMatch = html.match(/<meta\s+name="description"\s+content="(.*?)"/i);
+
+    const title = titleMatch ? titleMatch[1] : "";
+    const description = descMatch ? descMatch[1] : "";
+
+    return `${title}${description}`.trim();
+  } catch (error) {
+    console.error("Lỗi cào dữ liệu TikTok:", error);
+    return "";
+  }
+}
 
 export async function POST(req: Request) {
   try {
-    const { message, duration } = await req.json();
+    const body = await req.json();
+    const { message, duration } = body;
 
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    let extractedData = "";
 
-    let sceneCount = 3;
-    if (duration === "30s") sceneCount = 5;
-    if (duration === "60s") sceneCount = 9;
+    // 1. Kiểm tra xem người dùng có truyền link TikTok hay không
+    const tiktokUrlRegex = /(https?:\/\/[^\s]+tiktok\.com[^\s]+)/gi;
+    const matchedUrls = message.match(tiktokUrlRegex);
 
-    // 🏆 UNIVERSAL CONTENT ENGINE PROMPT (GIỮ NGUYÊN 100% TƯ DUY CỦA BẠN)
-    const systemPrompt = `
-SYSTEM PROMPT — UNIVERSAL CONTENT ENGINE
-Bạn là AI Content Strategist & Scriptwriter chuyên sâu. Nhiệm vụ: Biến mọi sản phẩm, dịch vụ hoặc chủ đề "${message}" thành content thu hút đúng người xem, giúp họ dừng lại, hiểu giá trị, tin tưởng và hành động. Mỗi case là một chiến lược mới.
-
-1. NGUYÊN TẮC CỐT LÕI: Xác định ngầm Sản phẩm, Khách hàng, Nỗi đau, Mức độ nhận thức, Lợi ích cốt lõi & CTA.
-2. KHÔNG DÙNG MỘT CÔNG THỨC CỐ ĐỊNH: Chọn góc mạnh nhất (Pain, Desire, Curiosity, Loss, Gain, Proof, Objection, Comparison, Mistake, Education, Story, Demo, Contrarian).
-3. HOOK: Thấy đúng vấn đề, tò mò, muốn xem tiếp. Tránh mở đầu chung chung "Bạn có biết...", "Hôm nay mình sẽ...".
-4. CUSTOMER PSYCHOLOGY: Luôn chuyển Tính năng -> Lợi ích -> Ý nghĩa thực tế. Trả lời câu hỏi "Vậy thì sao?".
-5. SPECIFICITY & NGÔN NGỮ: Ngắn, tự nhiên, 1 câu = 1 ý, giống cách nói thật. Tránh từ sáo rỗng "siêu phẩm", "đột phá".
-6. CẤM: Không bịa số liệu/review/kết quả không cơ sở. Không spam keyword, không dùng framework cứng.
-7. LOGIC GIÁ CẢ: Với sản phẩm điện máy/gia dụng/giá trị cao, KHÔNG so sánh giá với "2 ly trà sữa/bát phở".
-8. YÊU CẦU ĐỊNH DẠNG DỮ LIỆU:
-   - Tạo chính xác đúng ${sceneCount} phân cảnh cho thời lượng ${duration}.
-   - visual_prompt: Mô tả góc máy, ánh sáng, bối cảnh bằng TIẾNG ANH chi tiết cho AI Video Generator.
-   - visual_prompt_vi: Mô tả hình ảnh, hành động thực tế bằng TIẾNG VIỆT.
-   - voiceover: Lời thoại KOC/thuyết minh tự nhiên bằng TIẾNG VIỆT.
-`;
-
-    const schemaConfig = {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          scenes: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                scene_number: { type: Type.INTEGER },
-                duration: { type: Type.STRING },
-                visual_prompt: { type: Type.STRING },
-                visual_prompt_vi: { type: Type.STRING },
-                voiceover: { type: Type.STRING },
-              },
-              required: ["scene_number", "duration", "visual_prompt", "visual_prompt_vi", "voiceover"],
-            },
-          },
-        },
-        required: ["scenes"],
-      },
-    };
-
-    const modelsToTry = ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-2.5-flash"];
-    let response = null;
-    let lastError = null;
-
-    for (const modelName of modelsToTry) {
-      try {
-        console.log(`Đang gọi Gemini API với model: ${modelName}...`);
-        response = await ai.models.generateContent({
-          model: modelName,
-          contents: systemPrompt,
-          config: schemaConfig,
-        });
-        if (response) break;
-      } catch (err: any) {
-        lastError = err;
+    if (matchedUrls && matchedUrls.length > 0) {
+      const tiktokUrl = matchedUrls[0];
+      // Tự động cào thông tin sản phẩm từ link
+      const scrapedText = await fetchTiktokMetadata(tiktokUrl);
+      if (scrapedText) {
+        extractedData = `\n[THÔNG TIN BÓC TÁCH TỪ LINK TIKTOK MẪU]: ${scrapedText}`;
       }
     }
 
-    if (!response) {
-      throw lastError || new Error("Tất cả các model Gemini đều không phản hồi.");
+    // 2. Tạo Prompt điều khiển AI "xào lại 90%" kịch bản
+    const systemPrompt = `
+Bạn là một Chuyên gia Viết Kịch Bản Video Ngắn TikTok/Reels Affiliate triệu view.
+Nhiệm vụ của bạn: Dựa trên thông tin sản phẩm/link đối thủ được cung cấp, hãy SÁNG TẠO LẠI 90% KỊCH BẢN MỚI.
+
+[QUY TẮC RE-CREATE 90% - KHÔNG NHÁI 100%]:
+1. GIỮ LẠI (10%): Tên sản phẩm, tính năng cốt lõi, giá tiền/ưu đãi chính xác.
+2. SÁNG TẠO MỚI (90%): 
+   - Thay đổi hoàn toàn Lời thoại (Voiceover): Dùng văn phong giật gân mới, câu từ tự nhiên, thu hút hơn.
+   - Thay đổi Góc quay (Visual Prompt): AI tự đề xuất các góc quay KOC biến thể hoàn toàn mới (Góc cận cảnh chi tiết, góc nghiêng, góc trải nghiệm thực tế).
+   - Đảm bảo video KHÔNG BAO GIỜ bị TikTok quét dính bản quyền hoặc trùng lặp nội dung.
+
+[Mô tả từ người dùng / Dữ liệu link]: ${message}${extractedData}
+[Thời lượng video yêu cầu]: ${duration || "15s"}
+
+[YÊU CẦU ĐẦU RA]: Chỉ trả về định dạng JSON thuần túy (không chứa markdown \`\`\`json) theo cấu trúc:
+{
+  "scenes": [
+    {
+      "scene_number": 1,
+      "duration": "5s",
+      "visual_prompt": "Mô tả hình ảnh bằng tiếng Anh cho AI render video",
+      "visual_prompt_vi": "Mô tả hình ảnh bằng tiếng Việt cho người dùng xem",
+      "voiceover": "Lời thoại KOC giật gân, sáng tạo mới 100%"
+    }
+  ]
+}
+    `;
+
+    // 3. Gọi Gemini / OpenAI API (Ví dụ dùng Gemini)
+    const apiKey = process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json({ error: "Thiếu API Key cho AI Chat" }, { status: 500 });
     }
 
-    const responseText = response?.text || "";
-    let cleanJson = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
-    const scriptData = JSON.parse(cleanJson);
+    // *Ví dụ gọi Gemini API:*
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const result = await model.generateContent(systemPrompt);
+    const responseText = result.response.text();
 
-    return NextResponse.json({ script: scriptData });
+    // Làm sạch chuỗi JSON nếu AI trả về kèm ký tự ```json
+    const cleanedJson = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
+    const parsedScript = JSON.parse(cleanedJson);
+
+    return NextResponse.json({ script: parsedScript });
   } catch (error: any) {
     console.error("Lỗi API Chat:", error);
     return NextResponse.json(
-      { error: "Lỗi tạo kịch bản: " + (error.message || "Unknown Error") },
+      { error: error.message || "Không thể khởi tạo kịch bản xào lại 90%." },
       { status: 500 }
     );
   }
