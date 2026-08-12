@@ -62,11 +62,12 @@ export default function Home() {
     };
   }, [supabase]);
 
+  // SỬA CHUẨN: Chuyển hướng thẳng về trang chủ sau khi đăng nhập Google
   const handleLoginGoogle = async () => {
     await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo: typeof window !== "undefined" ? window.location.origin : undefined,
       },
     });
   };
