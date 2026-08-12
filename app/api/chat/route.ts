@@ -54,7 +54,7 @@ export async function POST(req: Request) {
     if (matchedUrls && matchedUrls.length > 0) {
       const tiktokUrl = matchedUrls[0];
       
-      // Gọi API TikWM để cào dữ liệu chuẩn đét
+      // Gọi API TikWM để cào dữ liệu chuẩn
       const scrapedResult = await fetchTiktokDataViaApi(tiktokUrl);
       
       if (scrapedResult.success && scrapedResult.text) {
@@ -74,10 +74,10 @@ Nhiệm vụ của bạn: Dựa trên thông tin sản phẩm/link đối thủ 
    - Thay đổi Góc quay (Visual Prompt): AI tự đề xuất các góc quay KOC biến thể hoàn toàn mới (Góc cận cảnh chi tiết, góc nghiêng, góc trải nghiệm thực tế).
    - Đảm bảo video KHÔNG BAO GIỜ bị TikTok quét dính bản quyền hoặc trùng lặp nội dung.
 
-[Mô tả từ người dùng / Dữ liệu link đối thủ]: ${message}${extractedData}
+[Mô tả từ người dùng / Dữ liệu link đối thủ]: ${message} ${extractedData}
 [Thời lượng video yêu cầu]: ${duration || "15s"}
 
-[YÊU CẦU ĐẦU RA]: Chỉ trả về định dạng JSON thuần túy (không chứa markdown \`\`\`json) theo cấu trúc:
+[YÊU CẦU ĐẦU RA]: Bắt buộc trả về đúng định dạng JSON theo cấu trúc:
 {
   "scenes": [
     {
@@ -98,13 +98,21 @@ Nhiệm vụ của bạn: Dựa trên thông tin sản phẩm/link đối thủ 
     }
 
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    
+    // CẤU HÌNH BẮT BUỘC TRẢ VỀ JSON MÔ HÌNH CHUẨN
+    const model = genAI.getGenerativeModel({ 
+      model: "gemini-1.5-flash",
+      generationConfig: { responseMimeType: "application/json" }
+    });
+
     const result = await model.generateContent(systemPrompt);
     const responseText = result.response.text();
 
-    // Làm sạch chuỗi JSON nếu AI trả về kèm ký tự ```json
-    const cleanedJson = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
-    const parsedScript = JSON.parse(cleanedJson);
+    // Trích xuất chuỗi JSON an toàn nhất
+    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+    const jsonString = jsonMatch ? jsonMatch[0] : responseText;
+    
+    const parsedScript = JSON.parse(jsonString);
 
     return NextResponse.json({ script: parsedScript });
   } catch (error: any) {
