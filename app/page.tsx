@@ -1,8 +1,12 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
 export default function Home() {
+  const supabase = createClientComponentClient();
+  const [user, setUser] = useState<any>(null);
+
   const [creativeMode, setCreativeMode] = useState<"creative" | "clone">("creative");
   const [keepVoice, setKeepVoice] = useState(false);
   const [language, setLanguage] = useState<"vi" | "en">("vi");
@@ -41,6 +45,39 @@ export default function Home() {
   const [scriptVideoUrls, setScriptVideoUrls] = useState<string[]>([]);
   const [singleSceneLoading, setSingleSceneLoading] = useState<number | null>(null);
   const [mergedVideoUrl, setMergedVideoUrl] = useState<string | null>(null);
+
+  // LẤY THÔNG TIN USER TỪ SUPABASE KHI TRANG TẢI
+  useEffect(() => {
+    const getUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUser(user);
+    };
+    getUser();
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
+  }, [supabase]);
+
+  // HÀM XỬ LÝ ĐĂNG NHẬP GOOGLE
+  const handleLoginGoogle = async () => {
+    await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback`,
+      },
+    });
+  };
+
+  // HÀM XỬ LÝ ĐĂNG XUẤT
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+  };
 
   const categories = [
     { name: "✨ Tất cả", prompt: "Váy đầm nữ linen mùa hè năng động, tôn dáng" },
@@ -127,10 +164,18 @@ export default function Home() {
       modeInstruction = "[YÊU CẦU: Dùng cho thời trang/nhảy. Giữ trang phục & điệu nhảy từ mẫu, đè mặt KOC cố định vào]";
     }
 
+    // STRICT PROMPT RULES: CHỐNG AI BỊA THÔNG TIN SẢN PHẨM
+    const strictRules = `
+[LUẬT SẮT ĐÁ]:
+1. BẮT BUỘC CHỈ DÙNG thông tin do người dùng nhập.
+2. KHÔNG TỰ BỊA THÊM chất liệu, tính năng, đặc điểm (Ví dụ: KHÔNG tự gán chất son Velvet/Matte, KHÔNG tự thêm công dụng mụn/dưỡng ẩm nếu người dùng không viết).
+3. Nếu người dùng chỉ nhập ngắn gọn, viết kịch bản tập trung vào trải nghiệm chung, TUYỆT ĐỐI không tự suy đoán đặc tính sản phẩm.
+    `;
+
     try {
       const payloadMessage = inputType === "link" 
-        ? `${textPrompt} (BẮT BUỘC XỬ LÝ LINK: ${competitorUrl}) ${modeInstruction}`
-        : `${textPrompt} (XỬ LÝ TỆP MẪU UPLOAD) ${modeInstruction}`;
+        ? `THÔNG TIN SẢN PHẨM KHÁCH CUNG CẤP: ${textPrompt} (LINK THAM KHẢO: ${competitorUrl}) ${modeInstruction} ${strictRules}`
+        : `THÔNG TIN SẢN PHẨM KHÁCH CUNG CẤP: ${textPrompt} (XỬ LÝ TỆP MẪU UPLOAD) ${modeInstruction} ${strictRules}`;
 
       const res = await fetch("/api/chat", {
         method: "POST",
@@ -230,39 +275,50 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans pb-10">
-      {/* HEADER: THƯƠNG HIỆU MỚI REELBO.AI */}
-      <header className="border-b border-slate-800 bg-slate-900/90 backdrop-blur px-6 py-3 flex flex-wrap justify-between items-center sticky top-0 z-50">
+      {/* HEADER: THƯƠNG HIỆU MỚI REELBO.AI + SUPABASE AUTH (ĐÃ TỐI ƯU MOBILE 100%) */}
+      <header className="border-b border-slate-800 bg-slate-900/90 backdrop-blur px-3 sm:px-6 py-2.5 flex items-center justify-between sticky top-0 z-50">
         <div className="flex items-center space-x-2">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-purple-600 to-pink-500 flex items-center justify-center font-bold text-lg text-white">
+          <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-gradient-to-tr from-purple-600 to-pink-500 flex items-center justify-center font-bold text-base sm:text-lg text-white">
             R
           </div>
-          <span className="font-bold text-lg bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+          <span className="font-bold text-base sm:text-lg bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
             Reelbo.ai
           </span>
         </div>
 
-        <div className="flex items-center space-x-4 text-xs sm:text-sm mt-2 sm:mt-0">
-          <button className="hover:text-purple-400 transition">🕒 Lịch Sử</button>
-          
-          <select 
-            value={language}
-            onChange={(e) => setLanguage(e.target.value as "vi" | "en")}
-            className="bg-slate-800 border border-slate-700 text-slate-200 text-xs px-2 py-1 rounded-full cursor-pointer outline-none hover:border-purple-500 transition"
-          >
-            <option value="vi">🇻🇳 Tiếng Việt</option>
-            <option value="en">🇬🇧 English</option>
-          </select>
-
+        <div className="flex items-center gap-1.5 sm:gap-3 text-xs">
           {/* CREDITS BADGE */}
-          <div className="bg-slate-800 border border-yellow-500/30 px-3 py-1 rounded-full flex items-center gap-2">
-            <span className="text-yellow-400 font-bold">🔥 {credits} Credits</span>
+          <div className="bg-slate-800 border border-yellow-500/30 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full flex items-center gap-1">
+            <span className="text-yellow-400 font-bold text-[11px] sm:text-xs">{credits} Cr</span>
             <button 
               onClick={() => setShowPaymentModal(true)}
-              className="bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-400 hover:to-amber-400 text-slate-950 text-xs font-bold px-2.5 py-0.5 rounded-full transition shadow"
+              className="bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-400 hover:to-amber-400 text-slate-950 text-[9px] sm:text-[10px] font-bold px-1.5 py-0.5 rounded-full transition shadow"
             >
               + Nạp
             </button>
           </div>
+
+          {/* SUPABASE AUTH: NÚT ĐĂNG NHẬP GOOGLE HOẶC THÔNG TIN TÀI KHOẢN */}
+          {user ? (
+            <div className="flex items-center gap-1.5 bg-slate-800 border border-slate-700 px-2 py-1 rounded-full">
+              <span className="text-[10px] sm:text-[11px] text-purple-300 font-medium max-w-[70px] sm:max-w-[120px] truncate">
+                {user.email}
+              </span>
+              <button
+                onClick={handleLogout}
+                className="text-[9px] bg-slate-700 hover:bg-slate-600 text-slate-200 px-1.5 py-0.5 rounded-full transition"
+              >
+                Thoát
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={handleLoginGoogle}
+              className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-[11px] sm:text-xs px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-full shadow flex items-center gap-1 whitespace-nowrap transition"
+            >
+              🔑 Đăng nhập
+            </button>
+          )}
         </div>
       </header>
 
@@ -490,15 +546,15 @@ export default function Home() {
                 </label>
               </div>
 
-              {/* 4. MÔ TẢ SẢN PHẨM / AI CHAT */}
+              {/* 4. MÔ TẢ SẢN PHẨM / AI CHAT (ĐÃ CẢI TIẾN PLACEHOLDER CỰC RÕ RÀNG) */}
               {!keepVoice ? (
                 <div>
                   <label className="text-xs text-slate-400 block mb-1">Mô tả sản phẩm / Ghi chú (AI Chat):</label>
                   <textarea
                     value={textPrompt}
                     onChange={(e) => setTextPrompt(e.target.value)}
-                    placeholder={creativeMode === "creative" ? "Ví dụ: Máy sấy tóc ion âm Sunhouse, Son môi..." : "Ví dụ: Set váy đầm linen mùa hè..."}
-                    className={`w-full h-16 bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs focus:outline-none text-slate-200 transition ${
+                    placeholder="Nhập đầy đủ: Tên sản phẩm + Thương hiệu + Đặc điểm chính (Ví dụ: Son dưỡng môi Dior Addict Lip Glow - màu 001 Pink - dưỡng ẩm mềm môi)..."
+                    className={`w-full h-20 bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-xs focus:outline-none text-slate-200 transition leading-relaxed ${
                       creativeMode === "creative" ? "focus:border-purple-500" : "focus:border-emerald-500"
                     }`}
                   />
@@ -751,4 +807,3 @@ export default function Home() {
     </div>
   );
 }
-
