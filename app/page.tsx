@@ -1,33 +1,33 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserClient } from "@supabase/ssr";
 
 export default function Home() {
-  const supabase = createClientComponentClient();
+  // Khởi tạo Supabase client chuẩn mới
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+
   const [user, setUser] = useState<any>(null);
 
   const [creativeMode, setCreativeMode] = useState<"creative" | "clone">("creative");
   const [keepVoice, setKeepVoice] = useState(false);
   const [language, setLanguage] = useState<"vi" | "en">("vi");
 
-  // State chọn 1 trong 2 nguồn dữ liệu mẫu (File hoặc Link)
   const [inputType, setInputType] = useState<"file" | "link">("file");
 
-  // State dữ liệu người dùng nhập
   const [textPrompt, setTextPrompt] = useState("");
   const [competitorUrl, setCompetitorUrl] = useState("");
   const [sampleMediaFile, setSampleMediaFile] = useState<File | null>(null);
 
-  // State quản lý tab "Gợi Ý Mẫu" sáng động
   const [activeCategory, setActiveCategory] = useState<number | null>(null);
 
-  // Quản lý ảnh nhân vật (5-10 ảnh)
   const [characterFiles, setCharacterFiles] = useState<File[]>([]);
   const [characterPreviews, setCharacterPreviews] = useState<string[]>([]);
   const [useConsistentCharacter, setUseConsistentCharacter] = useState(true);
 
-  // 🔒 CREDITS & THANH TOÁN: Mặc định = 0 Credits để ép nạp tiền khi bấm Sinh Video
   const [credits, setCredits] = useState(0); 
   const [showPaymentModal, setShowPaymentModal] = useState(false);
 
@@ -46,7 +46,6 @@ export default function Home() {
   const [singleSceneLoading, setSingleSceneLoading] = useState<number | null>(null);
   const [mergedVideoUrl, setMergedVideoUrl] = useState<string | null>(null);
 
-  // LẤY THÔNG TIN USER TỪ SUPABASE KHI TRANG TẢI
   useEffect(() => {
     const getUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -63,7 +62,6 @@ export default function Home() {
     };
   }, [supabase]);
 
-  // HÀM XỬ LÝ ĐĂNG NHẬP GOOGLE
   const handleLoginGoogle = async () => {
     await supabase.auth.signInWithOAuth({
       provider: "google",
@@ -73,7 +71,6 @@ export default function Home() {
     });
   };
 
-  // HÀM XỬ LÝ ĐĂNG XUẤT
   const handleLogout = async () => {
     await supabase.auth.signOut();
     setUser(null);
@@ -94,13 +91,11 @@ export default function Home() {
 
   const currentRequiredCredits = calculateRequiredCredits();
 
-  // Xử lý click chọn Tab Gợi ý mẫu sáng nổi bật
   const handleCategoryClick = (idx: number, promptText: string) => {
     setActiveCategory(idx);
     setTextPrompt(promptText);
   };
 
-  // Upload nhiều ảnh nhân vật KOC cố định (5-10 ảnh)
   const handleMultipleCharacterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const filesArray = Array.from(e.target.files);
@@ -138,7 +133,6 @@ export default function Home() {
     }
   }, [cooldown]);
 
-  // XỬ LÝ TẠO KỊCH BẢN AI (TEXT - MIỄN PHÍ)
   const handleChatSubmit = async () => {
     if (inputType === "link" && !competitorUrl.trim() && !textPrompt.trim()) {
       alert("Bạn đã chọn chế độ Dán Link. Vui lòng dán link TikTok/Shopee!");
@@ -164,11 +158,10 @@ export default function Home() {
       modeInstruction = "[YÊU CẦU: Dùng cho thời trang/nhảy. Giữ trang phục & điệu nhảy từ mẫu, đè mặt KOC cố định vào]";
     }
 
-    // STRICT PROMPT RULES: CHỐNG AI BỊA THÔNG TIN SẢN PHẨM
     const strictRules = `
 [LUẬT SẮT ĐÁ]:
 1. BẮT BUỘC CHỈ DÙNG thông tin do người dùng nhập.
-2. KHÔNG TỰ BỊA THÊM chất liệu, tính năng, đặc điểm (Ví dụ: KHÔNG tự gán chất son Velvet/Matte, KHÔNG tự thêm công dụng mụn/dưỡng ẩm nếu người dùng không viết).
+2. KHÔNG TỰ BỊA THÊM chất liệu, tính năng, đặc điểm.
 3. Nếu người dùng chỉ nhập ngắn gọn, viết kịch bản tập trung vào trải nghiệm chung, TUYỆT ĐỐI không tự suy đoán đặc tính sản phẩm.
     `;
 
@@ -197,7 +190,6 @@ export default function Home() {
     }
   };
 
-  // 🔒 HÀM XỬ LÝ SINH TOÀN BỘ VIDEO (CREDITS = 0 SẼ BẬT POPUP NẠP 20K)
   const handleGenerateAllVideos = async () => {
     if (!script || !script.scenes) return;
 
@@ -239,7 +231,6 @@ export default function Home() {
     }
   };
 
-  // 🔒 HÀM XỬ LÝ TẠO LẠI CẢNH LẺ (-2 CREDITS)
   const handleReGenerateSingleScene = async (sceneIndex: number) => {
     if (credits < 2) {
       setShowPaymentModal(true);
@@ -275,7 +266,6 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans pb-10">
-      {/* HEADER: THƯƠNG HIỆU MỚI REELBO.AI + SUPABASE AUTH (ĐÃ TỐI ƯU MOBILE 100%) */}
       <header className="border-b border-slate-800 bg-slate-900/90 backdrop-blur px-3 sm:px-6 py-2.5 flex items-center justify-between sticky top-0 z-50">
         <div className="flex items-center space-x-2">
           <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-gradient-to-tr from-purple-600 to-pink-500 flex items-center justify-center font-bold text-base sm:text-lg text-white">
@@ -287,7 +277,6 @@ export default function Home() {
         </div>
 
         <div className="flex items-center gap-1.5 sm:gap-3 text-xs">
-          {/* CREDITS BADGE */}
           <div className="bg-slate-800 border border-yellow-500/30 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full flex items-center gap-1">
             <span className="text-yellow-400 font-bold text-[11px] sm:text-xs">{credits} Cr</span>
             <button 
@@ -298,7 +287,6 @@ export default function Home() {
             </button>
           </div>
 
-          {/* SUPABASE AUTH: NÚT ĐĂNG NHẬP GOOGLE HOẶC THÔNG TIN TÀI KHOẢN */}
           {user ? (
             <div className="flex items-center gap-1.5 bg-slate-800 border border-slate-700 px-2 py-1 rounded-full">
               <span className="text-[10px] sm:text-[11px] text-purple-300 font-medium max-w-[70px] sm:max-w-[120px] truncate">
@@ -322,13 +310,11 @@ export default function Home() {
         </div>
       </header>
 
-      {/* BANNER KHUYẾN MÃI BETA LAUNCH */}
       <div className="bg-purple-900/20 border-b border-purple-500/20 text-center py-2 text-xs text-purple-300">
         🔥 Ưu đãi Beta Launch: Giảm 50% tất cả gói nạp Credits — Nạp 20k nhận ngay 20 Credits!
       </div>
 
       <main className="max-w-7xl mx-auto px-4 mt-4">
-        {/* BỘ LỌC CHỌN NHANH (CÁC TAB SÁNG ĐỘNG KHI CLICK) */}
         <div className="flex items-center gap-2 overflow-x-auto pb-3 text-xs">
           <span className="text-slate-400 whitespace-nowrap font-medium">Gợi ý mẫu:</span>
           {categories.map((cat, idx) => (
@@ -346,13 +332,8 @@ export default function Home() {
           ))}
         </div>
 
-        {/* BỐ CỤC 2 CỘT */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mt-2">
-          
-          {/* CỘT TRÁI: BẢNG ĐIỀU KHIỂN SÁNG TẠO */}
           <div className="lg:col-span-5 space-y-4">
-            
-            {/* CARDS CHỌN MODE SÁNG TẠO */}
             <div className="grid grid-cols-2 gap-2.5">
               <button
                 onClick={() => setCreativeMode("creative")}
@@ -393,12 +374,10 @@ export default function Home() {
               </button>
             </div>
 
-            {/* BẢNG ĐIỀU KHIỂN CHI TIẾT */}
             <div className={`bg-slate-900 border rounded-xl p-4 space-y-3.5 shadow-xl transition-all duration-300 ${
               creativeMode === "creative" ? "border-purple-500/40 shadow-purple-900/10" : "border-emerald-500/40 shadow-emerald-900/10"
             }`}>
 
-              {/* 1. UPLOAD NHIỀU ẢNH NHÂN VẬT CỐ ĐỊNH */}
               <div className={`p-3 rounded-lg border space-y-2 transition-all ${
                 creativeMode === "creative" ? "bg-slate-950 border-purple-500/30" : "bg-slate-950 border-emerald-500/30"
               }`}>
@@ -458,7 +437,6 @@ export default function Home() {
                 )}
               </div>
 
-              {/* 2. CHỌN NGUỒN MẪU */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-bold text-slate-300">🎬 2. Nguồn mẫu (Bắt buộc chọn 1):</span>
@@ -528,7 +506,6 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* 3. CÔNG TẮC GIỮ LỜI THOẠI */}
               <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-300">⚙️ Giữ Lời Thoại từ Video Mẫu:</span>
                 <label className={`flex items-center gap-2 px-3 py-1.5 rounded border cursor-pointer text-xs transition ${
@@ -546,14 +523,13 @@ export default function Home() {
                 </label>
               </div>
 
-              {/* 4. MÔ TẢ SẢN PHẨM / AI CHAT (ĐÃ CẢI TIẾN PLACEHOLDER CỰC RÕ RÀNG) */}
               {!keepVoice ? (
                 <div>
                   <label className="text-xs text-slate-400 block mb-1">Mô tả sản phẩm / Ghi chú (AI Chat):</label>
                   <textarea
                     value={textPrompt}
                     onChange={(e) => setTextPrompt(e.target.value)}
-                    placeholder="Nhập đầy đủ: Tên sản phẩm + Thương hiệu + Đặc điểm chính (Ví dụ: Son dưỡng môi Dior Addict Lip Glow - màu 001 Pink - dưỡng ẩm mềm môi)..."
+                    placeholder="Nhập đầy đủ: Tên sản phẩm + Thương hiệu + Đặc điểm chính..."
                     className={`w-full h-20 bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-xs focus:outline-none text-slate-200 transition leading-relaxed ${
                       creativeMode === "creative" ? "focus:border-purple-500" : "focus:border-emerald-500"
                     }`}
@@ -567,7 +543,6 @@ export default function Home() {
                 </div>
               )}
 
-              {/* THỜI LƯỢNG VIDEO */}
               <div>
                 <label className="text-xs text-slate-400 block mb-1">⏱️ Thời lượng video & Chi phí Credits:</label>
                 <div className="grid grid-cols-3 gap-2">
@@ -591,7 +566,6 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* CHẤT LƯỢNG & GIỌNG ĐỌC */}
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="text-[11px] text-slate-400 block mb-1">🎬 Chất lượng Video:</label>
@@ -618,7 +592,6 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* NÚT TẠO KỊCH BẢN AI (FREE) */}
               <div className="space-y-1.5">
                 <button
                   onClick={handleChatSubmit}
@@ -651,7 +624,6 @@ export default function Home() {
               </div>
             </div>
 
-            {/* KHUNG HIỂN THỊ KỊCH BẢN */}
             {script && (
               <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3 shadow-xl">
                 <div className="flex justify-between items-center">
@@ -686,7 +658,6 @@ export default function Home() {
             )}
           </div>
 
-          {/* CỘT PHẢI: VIDEO STUDIO */}
           <div className="lg:col-span-7 space-y-4">
             <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-4 shadow-xl min-h-[500px]">
               <h2 className="font-semibold text-purple-400 text-sm flex items-center justify-between">
@@ -694,7 +665,6 @@ export default function Home() {
                 {scriptVideoLoading && <span className="text-xs text-yellow-400 animate-pulse">⚡ Đang xử lý AI...</span>}
               </h2>
 
-              {/* KẾT QUẢ VIDEO TỔNG */}
               {mergedVideoUrl ? (
                 <div className="bg-slate-950 border border-purple-500/30 p-3 rounded-xl space-y-2">
                   <div className="flex justify-between items-center text-xs mb-1">
@@ -721,7 +691,6 @@ export default function Home() {
                 </div>
               )}
 
-              {/* LƯỚI PHÂN CẢNH LẺ */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {scriptVideoUrls.length > 0 ? (
                   scriptVideoUrls.map((url, idx) => (
@@ -754,7 +723,6 @@ export default function Home() {
         </div>
       </main>
 
-      {/* 🔒 POP-UP MODAL NẠP TIỀN THẬT VIETQR */}
       {showPaymentModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fadeIn">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full text-center relative shadow-2xl">
