@@ -22,7 +22,6 @@ async function fetchTiktokDataViaApi(tiktokUrl: string) {
 
     const result = await response.json();
 
-    // Nếu TikWM lấy dữ liệu thành công (code = 0)
     if (result && result.code === 0 && result.data) {
       const title = result.data.title || "";
       const author = result.data.author?.nickname || "";
@@ -53,8 +52,6 @@ export async function POST(req: Request) {
 
     if (matchedUrls && matchedUrls.length > 0) {
       const tiktokUrl = matchedUrls[0];
-      
-      // Gọi API TikWM để cào dữ liệu chuẩn
       const scrapedResult = await fetchTiktokDataViaApi(tiktokUrl);
       
       if (scrapedResult.success && scrapedResult.text) {
@@ -71,13 +68,13 @@ Nhiệm vụ của bạn: Dựa trên thông tin sản phẩm/link đối thủ 
 1. GIỮ LẠI (10%): Tên sản phẩm, tính năng cốt lõi, giá tiền/ưu đãi chính xác.
 2. SÁNG TẠO MỚI (90%): 
    - Thay đổi hoàn toàn Lời thoại (Voiceover): Dùng văn phong giật gân mới, câu từ tự nhiên, thu hút hơn.
-   - Thay đổi Góc quay (Visual Prompt): AI tự đề xuất các góc quay KOC biến thể hoàn toàn mới (Góc cận cảnh chi tiết, góc nghiêng, góc trải nghiệm thực tế).
+   - Thay đổi Góc quay (Visual Prompt): AI tự đề xuất các góc quay KOC biến thể hoàn toàn mới.
    - Đảm bảo video KHÔNG BAO GIỜ bị TikTok quét dính bản quyền hoặc trùng lặp nội dung.
 
 [Mô tả từ người dùng / Dữ liệu link đối thủ]: ${message} ${extractedData}
 [Thời lượng video yêu cầu]: ${duration || "15s"}
 
-[YÊU CẦU ĐẦU RA]: Bắt buộc trả về đúng định dạng JSON theo cấu trúc:
+[YÊU CẦU ĐẦU RA]: Bắt buộc trả về đúng định dạng JSON thuần túy (không chứa markdown \`\`\`json) theo cấu trúc:
 {
   "scenes": [
     {
@@ -91,7 +88,7 @@ Nhiệm vụ của bạn: Dựa trên thông tin sản phẩm/link đối thủ 
 }
     `;
 
-    // 3. Gọi Gemini API
+    // 3. Gọi Gemini API với các mô hình thế hệ 2.5 và 2.0
     const apiKey = process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY;
     if (!apiKey) {
       return NextResponse.json({ error: "Thiếu API Key cho AI Chat" }, { status: 500 });
@@ -99,16 +96,32 @@ Nhiệm vụ của bạn: Dựa trên thông tin sản phẩm/link đối thủ 
 
     const genAI = new GoogleGenerativeAI(apiKey);
     
-    // CẤU HÌNH BẮT BUỘC TRẢ VỀ JSON MÔ HÌNH CHUẨN
-    const model = genAI.getGenerativeModel({ 
-      model: "gemini-1.5-flash",
-      generationConfig: { responseMimeType: "application/json" }
-    });
+    // Khai báo danh sách các mô hình chuẩn
+    const candidateModels = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.5-pro"];
+    let responseText = "";
+    let apiError: any = null;
 
-    const result = await model.generateContent(systemPrompt);
-    const responseText = result.response.text();
+    for (const modelName of candidateModels) {
+      try {
+        const model = genAI.getGenerativeModel({ model: modelName });
+        const result = await model.generateContent(systemPrompt);
+        const resText = result.response.text();
 
-    // Trích xuất chuỗi JSON an toàn nhất
+        if (resText && resText.trim().length > 0) {
+          responseText = resText;
+          break; // Đã lấy được dữ liệu thành công
+        }
+      } catch (err) {
+        apiError = err;
+        console.warn(`Lỗi khi gọi model ${modelName}, đang thử model tiếp theo...`);
+      }
+    }
+
+    if (!responseText) {
+      throw apiError || new Error("Không thể khởi tạo kịch bản từ các model Gemini.");
+    }
+
+    // Trích xuất chuỗi JSON an toàn
     const jsonMatch = responseText.match(/\{[\s\S]*\}/);
     const jsonString = jsonMatch ? jsonMatch[0] : responseText;
     
