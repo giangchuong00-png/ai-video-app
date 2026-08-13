@@ -1,72 +1,78 @@
-import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
 
-// Khởi tạo Supabase Admin Client
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
-// BẢNG QUY ĐỔI CHUẨN BETA & GÓI THÁNG MỚI NHẤT
+// BẢNG QUY ĐỔI CHUẨN BETA & GÓI THÁNG
 const CREDIT_MAPPING: Record<number, number> = {
-  // 1. GÓI NẠP LẺ BETA
-  20000: 96,      // 20k -> 96 Credits
-  50000: 240,     // 50k -> 240 Credits
-  100000: 530,    // 100k -> 530 Credits
-  200000: 1080,   // 200k -> 1080 Credits
+  // Gói nạp lẻ Beta
+  20000: 96,
+  50000: 240,
+  100000: 530,
+  200000: 1080,
 
-  // 2. GÓI THÁNG
-  249000: 1200,   // Starter -> 1200 Credits
-  499000: 2600,   // Pro -> 2600 Credits
-  999000: 5500,   // Business -> 5500 Credits
-};
+  // Gói tháng
+  249000: 1200,
+  499000: 2600,
+  999000: 5500,
+}
 
-export async function POST(req: Request) {
+export async function POST(request: Request) {
   try {
-    const body = await req.json();
+    const body = await request.json()
+    const authHeader = request.headers.get('authorization')
 
-    // Lấy số tiền và nội dung chuyển khoản từ SePay bắn sang
-    const transferAmount = Number(body.transferAmount || body.amount || 0);
-    const content = String(body.content || body.description || "");
-
-    // Tìm số credits tương ứng với số tiền nạp
-    const creditsToAdd = CREDIT_MAPPING[transferAmount];
-
-    if (!creditsToAdd) {
-      return NextResponse.json({ message: "Số tiền không trùng khớp với các gói nạp" }, { status: 400 });
+    // 1. Xác nhận Secret Key từ SePay
+    const expectedSecret = process.env.SEPAY_WEBHOOK_SECRET
+    if (expectedSecret && authHeader !== `Apikey ${expectedSecret}`) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Lấy User ID từ nội dung chuyển khoản (VD: REELBO_user_123)
-    const match = content.match(/REELBO_([a-zA-Z0-9-]+)/i);
-    const userId = match ? match[1] : null;
+    const { content, transferAmount } = body
 
-    if (!userId) {
-      return NextResponse.json({ message: "Không tìm thấy User ID trong nội dung chuyển khoản" }, { status: 400 });
+    if (!content || !transferAmount) {
+      return NextResponse.json({ message: 'No content or amount' }, { status: 200 })
     }
 
-    // Lấy số credits hiện tại của user trong Supabase
-    const { data: userData, error: userError } = await supabaseAdmin
-      ? await supabaseAdmin.from("users").select("credits").eq("id", userId).single()
-      : { data: null, error: true };
+    // 2. Lấy số credits chuẩn theo bảng giá Beta
+    const creditsToAdd = CREDIT_MAPPING[Number(transferAmount)] || Math.floor(transferAmount / 1000)
 
-    if (userError || !userData) {
-      return NextResponse.json({ message: "Người dùng không tồn tại" }, { status: 404 });
+    if (creditsToAdd <= 0) {
+      return NextResponse.json({ message: 'Amount too low' }, { status: 200 })
     }
 
-    // Cộng nối tiếp credits mới vào tài khoản user
-    const newTotalCredits = (userData.credits || 0) + creditsToAdd;
+    // 3. Tìm email người dùng trong nội dung chuyển khoản
+    const emailMatch = content.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/)
 
-    await supabaseAdmin
-      .from("users")
-      .update({ credits: newTotalCredits })
-      .eq("id", userId);
+    if (emailMatch) {
+      const userEmail = emailMatch[0].toLowerCase()
 
-    return NextResponse.json({ 
-      success: true, 
-      message: `Cộng thành công ${creditsToAdd} credits cho user ${userId}` 
-    });
+      // Lấy user từ Supabase
+      const { data: userData, error: fetchError } = await supabase
+        .from('users')
+        .select('credits')
+        .eq('email', userEmail)
+        .single()
 
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+      if (userData) {
+        const currentCredits = userData.credits || 0
+        const newCredits = currentCredits + creditsToAdd
+
+        await supabase
+          .from('users')
+          .update({ credits: newCredits })
+          .eq('email', userEmail)
+
+        return NextResponse.json({
+          message: `Success! Added ${creditsToAdd} credits to ${userEmail}`,
+        })
+      }
+    }
+
+    return NextResponse.json({ message: 'User not found in content' }, { status: 200 })
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }
