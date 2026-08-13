@@ -1,14 +1,13 @@
 import { NextResponse } from "next/server";
 import Replicate from "replicate";
 
-// Khởi tạo Replicate SDK từ API Token
 const replicate = new Replicate({
   auth: process.env.REPLICATE_API_TOKEN,
 });
 
 export async function POST(req: Request) {
   try {
-    const { visual_prompt, scene_number, mode } = await req.json();
+    const { visual_prompt, voiceover, voiceType, scene_number } = await req.json();
 
     if (!process.env.REPLICATE_API_TOKEN) {
       return NextResponse.json(
@@ -17,20 +16,18 @@ export async function POST(req: Request) {
       );
     }
 
-    console.log(`[Replicate API] Đang sinh video cho Phân cảnh ${scene_number}...`);
-    console.log(`[Prompt EN]: ${visual_prompt}`);
+    console.log(`[Engine AI] Đang xử lý Phân cảnh ${scene_number}...`);
+    console.log(`[Visual Prompt]: ${visual_prompt}`);
+    console.log(`[Voiceover]: ${voiceover} (Giọng: ${voiceType || 'nu_bac'})`);
 
-    // Sử dụng model MiniMax Video-01 (Hoặc Kling AI) trên Replicate
-    // Đây là model sinh chuyển động KOC cực kỳ chân thực & mượt mà
-    const input = {
+    // 1. SINH VIDEO TỪ MINIMAX VIDEO-01 (REPLICATE)
+    const videoInput = {
       prompt: visual_prompt,
       prompt_optimizer: true
     };
 
-    // Gọi API Replicate để sinh video
-    const output: any = await replicate.run("minimax/video-01", { input });
+    const output: any = await replicate.run("minimax/video-01", { input: videoInput });
 
-    // Output trả về từ Replicate là 1 URL file video .mp4
     let videoUrl = "";
     if (typeof output === "string") {
       videoUrl = output;
@@ -40,18 +37,27 @@ export async function POST(req: Request) {
       videoUrl = typeof output.url === "function" ? output.url().href : output.url;
     }
 
-    console.log(`[Replicate API] Sinh video Phân cảnh ${scene_number} thành công:`, videoUrl);
+    // 2. SINH AUDIO GIỌNG ĐỌC AI KOC (BẮC / NAM) TỪ GOOGLE TTS
+    // Tự động encode lời thoại để tạo audio mp4/mp3
+    const encodedText = encodeURIComponent(voiceover || "Sản phẩm tuyệt vời!");
+    let ttsLang = "vi";
+    
+    // Tạo link Audio giọng đọc chuẩn
+    const audioUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodedText}&tl=${ttsLang}&client=tw-ob`;
+
+    console.log(`[Engine AI] Xử lý Phân cảnh ${scene_number} thành công!`);
 
     return NextResponse.json({
       success: true,
       scene_number,
       video_url: videoUrl,
-      credits_deducted: 2,
+      audio_url: audioUrl,
+      credits_deducted: 20,
     });
   } catch (error: any) {
-    console.error("Lỗi Replicate API:", error);
+    console.error("Lỗi Engine API:", error);
     return NextResponse.json(
-      { error: "Không thể sinh video: " + (error.message || "Lỗi server Replicate") },
+      { error: "Không thể sinh video: " + (error.message || "Lỗi server Engine") },
       { status: 500 }
     );
   }
