@@ -328,7 +328,7 @@ export default function Home() {
       <div className="bg-purple-900/20 border-b border-purple-500/20 text-center py-2 text-xs text-purple-300">
         🔥 Ưu đãi Beta Launch: Tặng đến +180 Credits cho các gói nạp Beta!
       </div>
-      
+
       <main className="max-w-7xl mx-auto px-4 mt-4">
         <div className="flex items-center gap-2 overflow-x-auto pb-3 text-xs">
           <span className="text-slate-400 whitespace-nowrap font-medium">Gợi ý mẫu:</span>
@@ -558,30 +558,19 @@ export default function Home() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-[11px] text-slate-400 block mb-1">🎬 Chất lượng Video:</label>
-                  <select
-                    value={videoMode}
-                    onChange={(e) => setVideoMode(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-200"
-                  >
-                    <option value="fast">⚡ Chế độ Nhanh (Gốc)</option>
-                    <option value="hd_pro">🔥 Chế độ HD Pro (x2 Credits)</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-[11px] text-slate-400 block mb-1">🎙️ Giọng đọc AI KOC:</label>
-                  <select
-                    value={voiceType}
-                    onChange={(e) => setVoiceType(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-200"
-                  >
-                    <option value="nu_bac">🗣️ Nữ Miền Bắc</option>
-                    <option value="nam_nam">🗣️ Nam Miền Nam</option>
-                    <option value="nu_nam">🗣️ Nữ Miền Nam</option>
-                  </select>
-                </div>
+              <div>
+                <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                  🎙️ Giọng đọc AI KOC:
+                </label>
+                <select
+                  value={voiceType}
+                  onChange={(e) => setVoiceType(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-purple-500 shadow-inner"
+                >
+                  <option value="nu_bac">🗣️ Nữ Miền Bắc</option>
+                  <option value="nam_nam">🗣️ Nam Miền Nam</option>
+                  <option value="nu_nam">🗣️ Nữ Miền Nam</option>
+                </select>
               </div>
 
               <div className="space-y-1.5">
