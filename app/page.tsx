@@ -4,7 +4,6 @@ import React, { useState, useEffect } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 
 export default function Home() {
-  // Khởi tạo Supabase client
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -13,8 +12,6 @@ export default function Home() {
   const [user, setUser] = useState<any>(null);
 
   const [creativeMode, setCreativeMode] = useState<"creative" | "clone">("creative");
-  const [language, setLanguage] = useState<"vi" | "en">("vi");
-
   const [inputType, setInputType] = useState<"file" | "link">("file");
 
   const [textPrompt, setTextPrompt] = useState("");
@@ -29,7 +26,8 @@ export default function Home() {
 
   const [credits, setCredits] = useState(0); 
   const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [selectedPlanAmount, setSelectedPlanAmount] = useState<number>(50000);
+  const [paymentTab, setPaymentTab] = useState<"one_time" | "subscription">("one_time");
+  const [selectedPlanAmount, setSelectedPlanAmount] = useState<number>(100000);
 
   const [cooldown, setCooldown] = useState(0); 
   const totalCooldownTime = 15;
@@ -46,12 +44,19 @@ export default function Home() {
   const [singleSceneLoading, setSingleSceneLoading] = useState<number | null>(null);
   const [mergedVideoUrl, setMergedVideoUrl] = useState<string | null>(null);
 
-  // Danh sách các gói nạp leo giá 20k - 50k - 100k - 200k
+  // 1. BẢNG GIÁ NẠP LẺ BẢN BETA (Đã cộng Bonus Beta, Lãi ròng ~60-64%)
   const topupPlans = [
-    { amount: 20000, credits: 20, bonus: "+0 Cr", original: "40.000đ", popular: false },
-    { amount: 50000, credits: 60, bonus: "+10 Cr", original: "100.000đ", popular: true },
-    { amount: 100000, credits: 140, bonus: "+40 Cr", original: "200.000đ", popular: false },
-    { amount: 200000, credits: 300, bonus: "+100 Cr", original: "400.000đ", popular: false },
+    { amount: 20000, credits: 96, bonus: "+16 Cr Beta", original: "40.000đ", popular: false },
+    { amount: 50000, credits: 240, bonus: "+40 Cr Beta", original: "100.000đ", popular: false },
+    { amount: 100000, credits: 530, bonus: "+80 Cr Beta", original: "200.000đ", popular: true },
+    { amount: 200000, credits: 1080, bonus: "+180 Cr Beta", original: "400.000đ", popular: false },
+  ];
+
+  // 2. BẢNG GIÁ ĐĂNG KÝ THÁNG (Đã xóa toàn bộ dòng chữ nhỏ mô tả số lượng video)
+  const subscriptionPlans = [
+    { amount: 249000, name: "Starter", credits: 1200, label: "249.000đ /tháng", popular: false },
+    { amount: 499000, name: "Pro", credits: 2600, label: "499.000đ /tháng", popular: true },
+    { amount: 999000, name: "Business", credits: 5500, label: "999.000đ /tháng", popular: false },
   ];
 
   useEffect(() => {
@@ -92,9 +97,11 @@ export default function Home() {
   ];
 
   const calculateRequiredCredits = () => {
-    if (videoLength === "30s") return 10;
-    if (videoLength === "60s") return 18;
-    return 6; 
+    let baseCredits = 60; // 15s (3 cảnh 5s) = 60 Credits
+    if (videoLength === "30s") baseCredits = 100;
+    if (videoLength === "60s") baseCredits = 180;
+
+    return videoMode === "hd_pro" ? baseCredits * 2 : baseCredits;
   };
 
   const currentRequiredCredits = calculateRequiredCredits();
@@ -238,7 +245,9 @@ export default function Home() {
   };
 
   const handleReGenerateSingleScene = async (sceneIndex: number) => {
-    if (credits < 2) {
+    const singleSceneCost = videoMode === "hd_pro" ? 40 : 20;
+
+    if (credits < singleSceneCost) {
       setShowPaymentModal(true);
       return;
     }
@@ -262,7 +271,7 @@ export default function Home() {
       const updatedUrls = [...scriptVideoUrls];
       updatedUrls[sceneIndex] = (res.ok && data.video_url) ? data.video_url : "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4";
       setScriptVideoUrls(updatedUrls);
-      setCredits((prev) => Math.max(0, prev - 2));
+      setCredits((prev) => Math.max(0, prev - singleSceneCost));
     } catch (err: any) {
       alert("Lỗi khi tạo lại phân cảnh này.");
     } finally {
@@ -284,7 +293,7 @@ export default function Home() {
 
         <div className="flex items-center gap-1.5 sm:gap-3 text-xs">
           <div className="bg-slate-800 border border-yellow-500/30 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full flex items-center gap-1">
-            <span className="text-yellow-400 font-bold text-[11px] sm:text-xs">{credits} Cr</span>
+            <span className="text-yellow-400 font-bold text-[11px] sm:text-xs">{credits} Credits</span>
             <button 
               onClick={() => setShowPaymentModal(true)}
               className="bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-400 hover:to-amber-400 text-slate-950 text-[9px] sm:text-[10px] font-bold px-1.5 py-0.5 rounded-full transition shadow"
@@ -317,9 +326,9 @@ export default function Home() {
       </header>
 
       <div className="bg-purple-900/20 border-b border-purple-500/20 text-center py-2 text-xs text-purple-300">
-        🔥 Ưu đãi Beta Launch: Giảm 50% tất cả gói nạp Credits — Nạp 20k nhận ngay 20 Credits!
+        🔥 Ưu đãi Beta Launch: Tặng đến +180 Credits cho các gói nạp Beta!
       </div>
-
+      
       <main className="max-w-7xl mx-auto px-4 mt-4">
         <div className="flex items-center gap-2 overflow-x-auto pb-3 text-xs">
           <span className="text-slate-400 whitespace-nowrap font-medium">Gợi ý mẫu:</span>
@@ -512,7 +521,6 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* ĐÃ SỬA: Ô MÔ TẢ SẢN PHẨM MỚI (KÈM CHỮ KHÔNG BẮT BUỘC) */}
               <div>
                 <label className="text-xs text-slate-400 block mb-1">
                   Mô tả sản phẩm <span className="text-slate-500 font-normal">(không bắt buộc)</span>:
@@ -527,15 +535,13 @@ export default function Home() {
                 />
               </div>
 
-              {/* ĐÃ XÓA HOÀN TOÀN Ô / CHECKBOX "GIỮ LỜI THOẠI" Ở ĐÂY */}
-
               <div>
                 <label className="text-xs text-slate-400 block mb-1">⏱️ Thời lượng video & Chi phí Credits:</label>
                 <div className="grid grid-cols-3 gap-2">
                   {[
-                    { id: "15s", label: "⚡ 15s (3 cảnh)" },
-                    { id: "30s", label: "🔥 30s (5 cảnh)" },
-                    { id: "60s", label: "🎬 60s (9 cảnh)" },
+                    { id: "15s", label: "⚡ 15s (60 Credits)" },
+                    { id: "30s", label: "🔥 30s (100 Credits)" },
+                    { id: "60s", label: "🎬 60s (180 Credits)" },
                   ].map((item) => (
                     <button
                       key={item.id}
@@ -560,8 +566,8 @@ export default function Home() {
                     onChange={(e) => setVideoMode(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-200"
                   >
-                    <option value="fast">⚡ Chế độ Nhanh (Rẻ)</option>
-                    <option value="hd_pro">🔥 Chế độ HD Pro (Đẹp)</option>
+                    <option value="fast">⚡ Chế độ Nhanh (Gốc)</option>
+                    <option value="hd_pro">🔥 Chế độ HD Pro (x2 Credits)</option>
                   </select>
                 </div>
                 <div>
@@ -689,7 +695,7 @@ export default function Home() {
                             disabled={singleSceneLoading === idx}
                             className="text-yellow-400 hover:text-yellow-300 text-[10px] font-medium underline flex items-center gap-1 transition"
                           >
-                            {singleSceneLoading === idx ? "⏳..." : "🔄 Tạo lại video (-2 Cr)"}
+                            {singleSceneLoading === idx ? "⏳..." : `🔄 Tạo lại (${videoMode === "hd_pro" ? 40 : 20} Credits)`}
                           </button>
                           <a href={url} download target="_blank" rel="noreferrer" className="text-purple-400 hover:underline text-[10px]">Tải về</a>
                         </div>
@@ -709,10 +715,10 @@ export default function Home() {
         </div>
       </main>
 
-      {/* MODAL NẠP TIỀN LEO GIÁ ĐÃ CẬP NHẬT 4 GÓI 20K - 50K - 100K - 200K */}
+      {/* MODAL THANH TOÁN THÔNG MINH */}
       {showPaymentModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fadeIn">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full text-center relative shadow-2xl space-y-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 sm:p-6 max-w-lg w-full text-center relative shadow-2xl space-y-4">
             <button 
               onClick={() => setShowPaymentModal(false)}
               className="absolute top-3 right-4 text-slate-400 hover:text-white text-xl font-bold transition"
@@ -720,55 +726,111 @@ export default function Home() {
               ✕
             </button>
             
-            <div className="w-12 h-12 rounded-full bg-purple-500/10 border border-purple-500/30 text-purple-400 flex items-center justify-center text-2xl mx-auto">
-              🔒
+            <div className="w-10 h-10 rounded-full bg-purple-500/10 border border-purple-500/30 text-purple-400 flex items-center justify-center text-xl mx-auto">
+              ⚡
             </div>
 
             <div>
               <h3 className="text-lg font-bold text-purple-400">
                 Kích Hoạt Sinh Toàn Bộ Video AI HD
               </h3>
-              <p className="text-xs text-slate-300 mt-1">
+              <p className="text-xs text-slate-300 mt-0.5">
                 Nạp Credits để Reelbo AI tiến hành render toàn bộ video sắc nét, không dính logo!
               </p>
             </div>
-            
-            {/* DANH SÁCH 4 GÓI NẠP LEO GIÁ */}
-            <div className="grid grid-cols-2 gap-2 text-left">
-              {topupPlans.map((plan) => (
-                <div
-                  key={plan.amount}
-                  onClick={() => setSelectedPlanAmount(plan.amount)}
-                  className={`p-3 rounded-xl border cursor-pointer transition-all relative ${
-                    selectedPlanAmount === plan.amount
-                      ? "bg-purple-950/60 border-purple-500 text-white shadow-lg shadow-purple-900/30"
-                      : "bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700"
-                  }`}
-                >
-                  {plan.popular && (
-                    <span className="absolute -top-2 right-2 bg-gradient-to-r from-purple-600 to-pink-600 text-[8px] text-white font-bold px-1.5 py-0.5 rounded-full uppercase">
-                      Bán Chạy
-                    </span>
-                  )}
-                  <p className="font-bold text-xs text-white">{plan.credits} Credits</p>
-                  <p className="text-[10px] text-slate-400 mt-0.5">
-                    Giá gốc: <span className="line-through text-slate-500">{plan.original}</span>
-                  </p>
-                  <span className="font-bold text-emerald-400 text-sm block mt-1">
-                    {plan.amount.toLocaleString("vi-VN")}đ <span className="text-[9px] text-amber-400 font-normal">({plan.bonus})</span>
-                  </span>
-                </div>
-              ))}
+
+            <div className="grid grid-cols-2 p-1 bg-slate-950 border border-slate-800 rounded-xl text-xs font-semibold">
+              <button
+                onClick={() => {
+                  setPaymentTab("one_time");
+                  setSelectedPlanAmount(100000);
+                }}
+                className={`py-2 rounded-lg transition ${
+                  paymentTab === "one_time"
+                    ? "bg-purple-600 text-white shadow"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                💳 Nạp Lẻ Credits
+              </button>
+              <button
+                onClick={() => {
+                  setPaymentTab("subscription");
+                  setSelectedPlanAmount(499000);
+                }}
+                className={`py-2 rounded-lg transition ${
+                  paymentTab === "subscription"
+                    ? "bg-purple-600 text-white shadow"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                👑 Gói Đăng Ký Tháng (Tiết Kiệm)
+              </button>
             </div>
+            
+            {/* DANH SÁCH GÓI NẠP LẺ BETA */}
+            {paymentTab === "one_time" ? (
+              <div className="grid grid-cols-2 sm:grid-cols-2 gap-2.5 text-left">
+                {topupPlans.map((plan) => (
+                  <div
+                    key={plan.amount}
+                    onClick={() => setSelectedPlanAmount(plan.amount)}
+                    className={`p-3 rounded-xl border cursor-pointer transition-all relative ${
+                      selectedPlanAmount === plan.amount
+                        ? "bg-purple-950/60 border-purple-500 text-white shadow-lg shadow-purple-900/30"
+                        : "bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700"
+                    }`}
+                  >
+                    {plan.popular && (
+                      <span className="absolute -top-2 right-2 bg-gradient-to-r from-purple-600 to-pink-600 text-[8px] text-white font-bold px-1.5 py-0.5 rounded-full uppercase">
+                        Bán Chạy
+                      </span>
+                    )}
+                    <p className="font-bold text-xs text-white">{plan.credits} Credits</p>
+                    <p className="text-[9px] text-slate-400 mt-0.5">
+                      Gốc: <span className="line-through text-slate-500">{plan.original}</span>
+                    </p>
+                    <span className="font-bold text-emerald-400 text-xs block mt-1">
+                      {plan.amount.toLocaleString("vi-VN")}đ <span className="text-[9px] text-amber-400 font-normal">({plan.bonus})</span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              /* DANH SÁCH GÓI ĐĂNG KÝ THÁNG (Đã làm sạch hoàn toàn chữ nhỏ) */
+              <div className="space-y-2 text-left">
+                {subscriptionPlans.map((sub) => (
+                  <div
+                    key={sub.amount}
+                    onClick={() => setSelectedPlanAmount(sub.amount)}
+                    className={`p-3.5 rounded-xl border cursor-pointer transition-all flex items-center justify-between relative ${
+                      selectedPlanAmount === sub.amount
+                        ? "bg-purple-950/60 border-purple-500 text-white shadow-lg shadow-purple-900/30"
+                        : "bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700"
+                    }`}
+                  >
+                    {sub.popular && (
+                      <span className="absolute -top-2 right-3 bg-gradient-to-r from-purple-600 to-pink-600 text-[8px] text-white font-bold px-2 py-0.5 rounded-full uppercase">
+                        Khuyên Dùng
+                      </span>
+                    )}
+                    <div>
+                      <p className="font-bold text-xs text-white">Gói {sub.name} ({sub.credits.toLocaleString("vi-VN")} Credits)</p>
+                    </div>
+                    <span className="font-bold text-emerald-400 text-sm">{sub.label}</span>
+                  </div>
+                ))}
+              </div>
+            )}
 
             <button 
-              onClick={() => alert(`Chuyển đến trang quét mã VietQR cho gói ${selectedPlanAmount.toLocaleString("vi-VN")} VNĐ...`)}
+              onClick={() => alert(`Đang chuyển tới cổng quét mã QR VietQR cho gói ${selectedPlanAmount.toLocaleString("vi-VN")} VNĐ...`)}
               className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 font-bold py-3 rounded-xl text-white shadow-lg transition text-xs flex items-center justify-center gap-2 mt-2"
             >
               💳 Thanh Toán VietQR ({selectedPlanAmount.toLocaleString("vi-VN")} VNĐ)
             </button>
             <p className="text-[10px] text-slate-500">
-              Mã QR cập nhật Credits tự động sau 3s-5s chuyển khoản.
+              Tự động kích hoạt Credits ngay sau 3s - 5s chuyển khoản thành công.
             </p>
           </div>
         </div>
