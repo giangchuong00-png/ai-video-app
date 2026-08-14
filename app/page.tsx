@@ -147,6 +147,20 @@ export default function Home() {
       return () => clearTimeout(timer);
     }
   }, [cooldown]);
+  
+  const handleDownloadVideo = (url: string) => {
+    if (!url) {
+      alert("Chưa có link video để tải!");
+      return;
+    }
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `reelbo_video_${Date.now()}.mp4`;
+    a.target = "_blank";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
 
   const handleChatSubmit = async () => {
     if (inputType === "link" && !competitorUrl.trim() && !textPrompt.trim()) {
@@ -157,12 +171,32 @@ export default function Home() {
       alert("Bạn đã chọn chế độ Tải File. Vui lòng chọn ảnh/video từ máy!");
       return;
     }
-
+    
     setChatLoading(true);
     setCooldown(totalCooldownTime);
     setScript(null);
     setScriptVideoUrls([]);
     setMergedVideoUrl(null);
+
+    // 1. TỰ ĐỘNG CÀO DỮ LIỆU TỪ LINK TIKTOK TRƯỚC KHI TẠO KỊCH BẢN
+    let crawledText = textPrompt;
+    if (inputType === "link" && competitorUrl.trim()) {
+      try {
+        console.log("Đang gọi API cào dữ liệu TikTok...");
+        const crawlRes = await fetch("/api/crawl", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: competitorUrl }),
+        });
+        const crawlData = await crawlRes.json();
+        if (crawlRes.ok && crawlData.data) {
+          crawledText = `[Nội dung cào từ video TikTok]: ${crawlData.data.title}. Yêu cầu thêm: ${textPrompt}`;
+          console.log("Cào thành công:", crawlData.data.title);
+        }
+      } catch (err) {
+        console.error("Lỗi cào link, dùng mô tả thủ công:", err);
+      }
+    }
 
     let modeInstruction = "";
     if (creativeMode === "creative") {
@@ -175,12 +209,11 @@ export default function Home() {
 [LUẬT SẮT ĐÁ]:
 1. BẮT BUỘC CHỈ DÙNG thông tin do người dùng nhập hoặc cào từ link mẫu.
 2. KHÔNG TỰ BỊA THÊM chất liệu, tính năng, đặc điểm ngoài sản phẩm.
-3. Nếu người dùng chỉ nhập ngắn gọn, viết kịch bản tập trung vào trải nghiệm chung, TUYỆT ĐỐI không tự suy đoán đặc tính sản phẩm.
     `;
 
     try {
       const payloadMessage = inputType === "link" 
-        ? `THÔNG TIN SẢN PHẨM KHÁCH CUNG CẤP: ${textPrompt} (LINK THAM KHẢO: ${competitorUrl}) ${modeInstruction} ${strictRules}`
+        ? `THÔNG TIN SẢN PHẨM KHÁCH CUNG CẤP: ${crawledText} (LINK THAM KHẢO: ${competitorUrl}) ${modeInstruction} ${strictRules}`
         : `THÔNG TIN SẢN PHẨM KHÁCH CUNG CẤP: ${textPrompt} (XỬ LÝ TỆP MẪU UPLOAD) ${modeInstruction} ${strictRules}`;
 
       const res = await fetch("/api/chat", {
@@ -650,15 +683,12 @@ export default function Home() {
                 <div className="bg-slate-950 border border-purple-500/30 p-3 rounded-xl space-y-2">
                   <div className="flex justify-between items-center text-xs mb-1">
                     <span className="font-bold text-purple-300">🏆 VIDEO TỔNG HOÀN CHỈNH HD</span>
-                    <a
-                      href={mergedVideoUrl}
-                      download
-                      target="_blank"
-                      rel="noreferrer"
-                      className="bg-purple-600 hover:bg-purple-500 text-white px-3 py-1.5 rounded-lg text-[11px] font-bold transition shadow-md"
-                    >
-                      📥 Tải video gộp FREE
-                    </a>
+                    <button
+                    onClick={() => handleDownloadVideo(mergedVideoUrl)}
+                    className="bg-purple-600 hover:bg-purple-500 text-white font-bold px-3 py-1.5 rounded-lg text-[11px] flex items-center gap-1 transition shadow-md hover:shadow-purple-500/20 active:scale-95"
+                  >
+                    📥 Tải video gộp FREE
+                  </button>
                   </div>
                   <video src={mergedVideoUrl} controls autoPlay className="w-full h-52 object-cover rounded-lg bg-black shadow" />
                 </div>
