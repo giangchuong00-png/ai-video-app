@@ -844,9 +844,30 @@ export default function Home() {
 
 <button
             onClick={() => {
-              const memo = "REELBO KHAC";
+              // 1. Lấy email (hỏi người dùng nếu chưa có phiên đăng nhập)
+              let userEmail = "";
+              try {
+                // Thử lấy email từ LocalStorage nếu có
+                const savedUser = localStorage.getItem("user") || localStorage.getItem("supabase.auth.token");
+                if (savedUser) {
+                  const parsed = JSON.parse(savedUser);
+                  userEmail = parsed?.email || parsed?.user?.email || "";
+                }
+              } catch (e) {}
+
+              if (!userEmail) {
+                userEmail = prompt("Nhập Email tài khoản của bạn để hệ thống tự động cộng Credits:") || "";
+              }
+
+              if (!userEmail || !userEmail.includes("@")) {
+                alert("Vui lòng nhập đúng địa chỉ Email để nạp tiền!");
+                return;
+              }
+
               const amount = selectedPlanAmount || 50000;
+              const memo = `REELBO ${userEmail.trim()}`;
               const qrUrl = `https://img.vietqr.io/image/MB-0914285399-compact2.png?amount=${amount}&addInfo=${encodeURIComponent(memo)}`;
+
               window.open(qrUrl, "_blank");
             }}
             className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold py-2.5 rounded-xl flex items-center justify-center gap-2 text-xs transition shadow-lg shadow-purple-500/25 active:scale-95 mt-3"
