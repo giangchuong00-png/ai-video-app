@@ -11,12 +11,8 @@ export default function Home() {
 
   const [user, setUser] = useState<any>(null);
 
-  // State Modal Đăng Nhập / Đăng Ký
+  // State Modal Đăng Nhập
   const [showAuthModal, setShowAuthModal] = useState(false);
-  const [authEmail, setAuthEmail] = useState("");
-  const [authPassword, setAuthPassword] = useState("");
-  const [isSignUp, setIsSignUp] = useState(false);
-  const [authLoading, setAuthLoading] = useState(false);
 
   const [creativeMode, setCreativeMode] = useState<"creative" | "clone">("creative");
   const [inputType, setInputType] = useState<"file" | "link">("file");
@@ -110,33 +106,6 @@ export default function Home() {
         redirectTo: typeof window !== "undefined" ? window.location.origin : undefined,
       },
     });
-  };
-
-  const handleAuthSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setAuthLoading(true);
-    try {
-      if (isSignUp) {
-        const { data, error } = await supabase.auth.signUp({
-          email: authEmail.trim(),
-          password: authPassword,
-        });
-        if (error) throw error;
-        alert("Đăng ký tài khoản thành công! Bạn có thể tiến hành nạp tiền.");
-        setShowAuthModal(false);
-      } else {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: authEmail.trim(),
-          password: authPassword,
-        });
-        if (error) throw error;
-        setShowAuthModal(false);
-      }
-    } catch (err: any) {
-      alert("Lỗi đăng nhập/đăng ký: " + (err.message || "Vui lòng thử lại"));
-    } finally {
-      setAuthLoading(false);
-    }
   };
 
   const handleLogout = async () => {
@@ -928,30 +897,37 @@ export default function Home() {
         </div>
       )}
 
-      {/* MODAL POPUP ĐĂNG NHẬP / ĐĂNG KÝ THẬT QUA SUPABASE */}
+      {/* MODAL ĐĂNG NHẬP 1 CHẠM DUY NHẤT VỚI GOOGLE */}
       {showAuthModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fadeIn">
-          <div className="bg-slate-900 border border-slate-700 w-full max-w-md p-6 rounded-2xl shadow-2xl relative">
+          <div className="bg-slate-900 border border-slate-700 w-full max-w-sm p-6 rounded-2xl shadow-2xl relative text-center">
+            {/* Nút đóng */}
             <button
               onClick={() => setShowAuthModal(false)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-white text-xl font-bold transition"
+              className="absolute top-4 right-4 text-slate-400 hover:text-white text-lg font-bold transition"
             >
               ✕
             </button>
 
-            <h3 className="text-xl font-bold text-white text-center mb-1">
-              {isSignUp ? "Tạo Tài Khoản Reelbo" : "Đăng Nhập Tài Khoản"}
+            {/* Logo / Biểu tượng */}
+            <div className="w-12 h-12 bg-purple-600/20 border border-purple-500/30 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-inner">
+              <span className="text-2xl">✨</span>
+            </div>
+
+            <h3 className="text-lg font-bold text-white mb-1.5">
+              Đăng Nhập Tài Khoản
             </h3>
-            <p className="text-xs text-slate-400 text-center mb-5">
-              Đăng nhập để hệ thống tự động nhận diện và cộng Credits khi nạp tiền.
+            <p className="text-xs text-slate-400 leading-relaxed mb-6 px-2">
+              Vui lòng đăng nhập bằng Google để hệ thống tự động nhận diện tài khoản và cộng Credits khi nạp tiền.
             </p>
 
+            {/* NÚT TIẾP TỤC VỚI GOOGLE */}
             <button
               onClick={handleLoginGoogle}
               type="button"
-              className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-xs font-semibold text-white flex items-center justify-center gap-2 transition mb-4 shadow"
+              className="w-full py-3.5 bg-white hover:bg-slate-100 text-slate-900 font-bold rounded-xl text-xs flex items-center justify-center gap-3 transition shadow-lg shadow-white/10 active:scale-95"
             >
-              <svg className="w-4 h-4" viewBox="0 0 24 24">
+              <svg className="w-5 h-5" viewBox="0 0 24 24">
                 <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
                 <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
                 <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
@@ -960,59 +936,12 @@ export default function Home() {
               Tiếp tục với tài khoản Google
             </button>
 
-            <div className="flex items-center my-3">
-              <div className="flex-1 border-t border-slate-800"></div>
-              <span className="px-2 text-[10px] text-slate-500 uppercase">Hoặc bằng Email</span>
-              <div className="flex-1 border-t border-slate-800"></div>
-            </div>
-
-            <form onSubmit={handleAuthSubmit} className="space-y-3.5">
-              <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">Email</label>
-                <input
-                  type="email"
-                  required
-                  placeholder="name@gmail.com"
-                  value={authEmail}
-                  onChange={(e) => setAuthEmail(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500 shadow-inner"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">Mật khẩu</label>
-                <input
-                  type="password"
-                  required
-                  placeholder="••••••••"
-                  value={authPassword}
-                  onChange={(e) => setAuthPassword(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500 shadow-inner"
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={authLoading}
-                className="w-full py-2.5 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold rounded-xl text-xs transition shadow-lg shadow-purple-500/25 disabled:opacity-50"
-              >
-                {authLoading ? "Đang xử lý..." : isSignUp ? "Tạo Tài Khoản Mới" : "Đăng Nhập"}
-              </button>
-            </form>
-
-            <div className="mt-4 text-center">
-              <button
-                type="button"
-                onClick={() => setIsSignUp(!isSignUp)}
-                className="text-xs text-purple-400 hover:underline"
-              >
-                {isSignUp ? "Đã có tài khoản? Đăng nhập ngay" : "Chưa có tài khoản? Đăng ký ngay"}
-              </button>
-            </div>
+            <p className="text-[10px] text-slate-500 mt-4">
+              Bảo mật 100% qua Google • Đăng nhập tức thì trong 1 giây
+            </p>
           </div>
         </div>
       )}
-
     </div>
   );
 }
