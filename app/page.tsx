@@ -11,6 +11,13 @@ export default function Home() {
 
   const [user, setUser] = useState<any>(null);
 
+  // State Modal Đăng Nhập / Đăng Ký
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [authLoading, setAuthLoading] = useState(false);
+
   const [creativeMode, setCreativeMode] = useState<"creative" | "clone">("creative");
   const [inputType, setInputType] = useState<"file" | "link">("file");
 
@@ -44,7 +51,7 @@ export default function Home() {
   const [singleSceneLoading, setSingleSceneLoading] = useState<number | null>(null);
   const [mergedVideoUrl, setMergedVideoUrl] = useState<string | null>(null);
 
-  // 1. BẢNG GIÁ NẠP LẺ BẢN BETA (Đã cộng Bonus Beta, Lãi ròng ~60-64%)
+  // 1. BẢNG GIÁ NẠP LẺ BẢN BETA
   const topupPlans = [
     { amount: 20000, credits: 96, bonus: "+16 Cr Beta", original: "40.000đ", popular: false },
     { amount: 50000, credits: 240, bonus: "+40 Cr Beta", original: "100.000đ", popular: false },
@@ -52,22 +59,43 @@ export default function Home() {
     { amount: 200000, credits: 1080, bonus: "+180 Cr Beta", original: "400.000đ", popular: false },
   ];
 
-  // 2. BẢNG GIÁ ĐĂNG KÝ THÁNG (Đã xóa toàn bộ dòng chữ nhỏ mô tả số lượng video)
+  // 2. BẢNG GIÁ ĐĂNG KÝ THÁNG
   const subscriptionPlans = [
     { amount: 249000, name: "Starter", credits: 1200, label: "249.000đ /tháng", popular: false },
     { amount: 499000, name: "Pro", credits: 2600, label: "499.000đ /tháng", popular: true },
     { amount: 999000, name: "Business", credits: 5500, label: "999.000đ /tháng", popular: false },
   ];
 
+  // Lấy dữ liệu user và số credits từ Supabase
   useEffect(() => {
+    const fetchUserData = async (currentUser: any) => {
+      if (!currentUser?.email) return;
+      try {
+        const { data, error } = await supabase
+          .from("users")
+          .select("credits")
+          .eq("email", currentUser.email)
+          .single();
+
+        if (data && typeof data.credits === "number") {
+          setCredits(data.credits);
+        }
+      } catch (err) {
+        console.error("Lỗi lấy số dư credits:", err);
+      }
+    };
+
     const getUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       setUser(user);
+      if (user) fetchUserData(user);
     };
     getUser();
 
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
+      if (currentUser) fetchUserData(currentUser);
     });
 
     return () => {
@@ -84,9 +112,54 @@ export default function Home() {
     });
   };
 
+  const handleAuthSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthLoading(true);
+    try {
+      if (isSignUp) {
+        const { data, error } = await supabase.auth.signUp({
+          email: authEmail.trim(),
+          password: authPassword,
+        });
+        if (error) throw error;
+        alert("Đăng ký tài khoản thành công! Bạn có thể tiến hành nạp tiền.");
+        setShowAuthModal(false);
+      } else {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: authEmail.trim(),
+          password: authPassword,
+        });
+        if (error) throw error;
+        setShowAuthModal(false);
+      }
+    } catch (err: any) {
+      alert("Lỗi đăng nhập/đăng ký: " + (err.message || "Vui lòng thử lại"));
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     setUser(null);
+    setCredits(0);
+  };
+
+  const handlePaymentClick = () => {
+    // 1. Bắt buộc đăng nhập trước khi nạp
+    if (!user || !user.email) {
+      setShowPaymentModal(false);
+      setShowAuthModal(true);
+      return;
+    }
+
+    // 2. Tự động lấy email chuẩn của tài khoản và tạo mã VietQR MBBank
+    const currentEmail = user.email.toLowerCase().trim();
+    const amount = selectedPlanAmount || 50000;
+    const memo = `REELBO ${currentEmail}`;
+    const qrUrl = `https://img.vietqr.io/image/MB-0914285399-compact2.png?amount=${amount}&addInfo=${encodeURIComponent(memo)}`;
+
+    window.open(qrUrl, "_blank");
   };
 
   const categories = [
@@ -97,7 +170,7 @@ export default function Home() {
   ];
 
   const calculateRequiredCredits = () => {
-    let baseCredits = 60; // 15s (3 cảnh 5s) = 60 Credits
+    let baseCredits = 60;
     if (videoLength === "30s") baseCredits = 100;
     if (videoLength === "60s") baseCredits = 180;
 
@@ -178,7 +251,6 @@ export default function Home() {
     setScriptVideoUrls([]);
     setMergedVideoUrl(null);
 
-    // 1. TỰ ĐỘNG CÀO DỮ LIỆU TỪ LINK TIKTOK TRƯỚC KHI TẠO KỊCH BẢN
     let crawledText = textPrompt;
     if (inputType === "link" && competitorUrl.trim()) {
       try {
@@ -314,6 +386,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans pb-10">
+      {/* HEADER */}
       <header className="border-b border-slate-800 bg-slate-900/90 backdrop-blur px-3 sm:px-6 py-2.5 flex items-center justify-between sticky top-0 z-50">
         <div className="flex items-center space-x-2">
           <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-gradient-to-tr from-purple-600 to-pink-500 flex items-center justify-center font-bold text-base sm:text-lg text-white">
@@ -349,7 +422,7 @@ export default function Home() {
             </div>
           ) : (
             <button
-              onClick={handleLoginGoogle}
+              onClick={() => setShowAuthModal(true)}
               className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-[11px] sm:text-xs px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-full shadow flex items-center gap-1 whitespace-nowrap transition"
             >
               🔑 Đăng nhập
@@ -734,7 +807,7 @@ export default function Home() {
         </div>
       </main>
 
-      {/* MODAL THANH TOÁN THÔNG MINH */}
+      {/* MODAL THANH TOÁN VIETQR */}
       {showPaymentModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fadeIn">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 sm:p-6 max-w-lg w-full text-center relative shadow-2xl space-y-4">
@@ -816,7 +889,7 @@ export default function Home() {
                 ))}
               </div>
             ) : (
-              /* DANH SÁCH GÓI ĐĂNG KÝ THÁNG (Đã làm sạch hoàn toàn chữ nhỏ) */
+              /* DANH SÁCH GÓI ĐĂNG KÝ THÁNG */
               <div className="space-y-2 text-left">
                 {subscriptionPlans.map((sub) => (
                   <div
@@ -842,41 +915,100 @@ export default function Home() {
               </div>
             )}
 
-<button
-            onClick={() => {
-              // 1. Lấy email (hỏi người dùng nếu chưa có phiên đăng nhập)
-              let userEmail = "";
-              try {
-                // Thử lấy email từ LocalStorage nếu có
-                const savedUser = localStorage.getItem("user") || localStorage.getItem("supabase.auth.token");
-                if (savedUser) {
-                  const parsed = JSON.parse(savedUser);
-                  userEmail = parsed?.email || parsed?.user?.email || "";
-                }
-              } catch (e) {}
-
-              if (!userEmail) {
-                userEmail = prompt("Nhập Email tài khoản của bạn để hệ thống tự động cộng Credits:") || "";
-              }
-
-              if (!userEmail || !userEmail.includes("@")) {
-                alert("Vui lòng nhập đúng địa chỉ Email để nạp tiền!");
-                return;
-              }
-
-              const amount = selectedPlanAmount || 50000;
-              const memo = `REELBO ${userEmail.trim()}`;
-              const qrUrl = `https://img.vietqr.io/image/MB-0914285399-compact2.png?amount=${amount}&addInfo=${encodeURIComponent(memo)}`;
-
-              window.open(qrUrl, "_blank");
-            }}
-            className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold py-2.5 rounded-xl flex items-center justify-center gap-2 text-xs transition shadow-lg shadow-purple-500/25 active:scale-95 mt-3"
-          >
-            💳 Thanh Toán VietQR ({(selectedPlanAmount || 0).toLocaleString("vi-VN")} VNĐ)
-          </button>
+            <button
+              onClick={handlePaymentClick}
+              className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold py-2.5 rounded-xl flex items-center justify-center gap-2 text-xs transition shadow-lg shadow-purple-500/25 active:scale-95 mt-3"
+            >
+              💳 Thanh Toán VietQR ({(selectedPlanAmount || 0).toLocaleString("vi-VN")} VNĐ)
+            </button>
             <p className="text-[10px] text-slate-500">
               Tự động kích hoạt Credits ngay sau 3s - 5s chuyển khoản thành công.
             </p>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL POPUP ĐĂNG NHẬP / ĐĂNG KÝ THẬT QUA SUPABASE */}
+      {showAuthModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fadeIn">
+          <div className="bg-slate-900 border border-slate-700 w-full max-w-md p-6 rounded-2xl shadow-2xl relative">
+            <button
+              onClick={() => setShowAuthModal(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white text-xl font-bold transition"
+            >
+              ✕
+            </button>
+
+            <h3 className="text-xl font-bold text-white text-center mb-1">
+              {isSignUp ? "Tạo Tài Khoản Reelbo" : "Đăng Nhập Tài Khoản"}
+            </h3>
+            <p className="text-xs text-slate-400 text-center mb-5">
+              Đăng nhập để hệ thống tự động nhận diện và cộng Credits khi nạp tiền.
+            </p>
+
+            <button
+              onClick={handleLoginGoogle}
+              type="button"
+              className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-xs font-semibold text-white flex items-center justify-center gap-2 transition mb-4 shadow"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24">
+                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+              </svg>
+              Tiếp tục với tài khoản Google
+            </button>
+
+            <div className="flex items-center my-3">
+              <div className="flex-1 border-t border-slate-800"></div>
+              <span className="px-2 text-[10px] text-slate-500 uppercase">Hoặc bằng Email</span>
+              <div className="flex-1 border-t border-slate-800"></div>
+            </div>
+
+            <form onSubmit={handleAuthSubmit} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1">Email</label>
+                <input
+                  type="email"
+                  required
+                  placeholder="name@gmail.com"
+                  value={authEmail}
+                  onChange={(e) => setAuthEmail(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500 shadow-inner"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1">Mật khẩu</label>
+                <input
+                  type="password"
+                  required
+                  placeholder="••••••••"
+                  value={authPassword}
+                  onChange={(e) => setAuthPassword(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500 shadow-inner"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={authLoading}
+                className="w-full py-2.5 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold rounded-xl text-xs transition shadow-lg shadow-purple-500/25 disabled:opacity-50"
+              >
+                {authLoading ? "Đang xử lý..." : isSignUp ? "Tạo Tài Khoản Mới" : "Đăng Nhập"}
+              </button>
+            </form>
+
+            <div className="mt-4 text-center">
+              <button
+                type="button"
+                onClick={() => setIsSignUp(!isSignUp)}
+                className="text-xs text-purple-400 hover:underline"
+              >
+                {isSignUp ? "Đã có tài khoản? Đăng nhập ngay" : "Chưa có tài khoản? Đăng ký ngay"}
+              </button>
+            </div>
           </div>
         </div>
       )}
