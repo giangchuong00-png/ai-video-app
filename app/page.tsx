@@ -842,12 +842,17 @@ export default function Home() {
               </div>
             )}
 
-            <button 
-              onClick={() => alert(`Đang chuyển tới cổng quét mã QR VietQR cho gói ${selectedPlanAmount.toLocaleString("vi-VN")} VNĐ...`)}
-              className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 font-bold py-3 rounded-xl text-white shadow-lg transition text-xs flex items-center justify-center gap-2 mt-2"
-            >
-              💳 Thanh Toán VietQR ({selectedPlanAmount.toLocaleString("vi-VN")} VNĐ)
-            </button>
+<button
+            onClick={() => {
+              const memo = "REELBO KHAC";
+              const amount = selectedPlanAmount || 50000;
+              const qrUrl = `https://img.vietqr.io/image/MB-0914285399-compact2.png?amount=${amount}&addInfo=${encodeURIComponent(memo)}`;
+              window.open(qrUrl, "_blank");
+            }}
+            className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold py-2.5 rounded-xl flex items-center justify-center gap-2 text-xs transition shadow-lg shadow-purple-500/25 active:scale-95 mt-3"
+          >
+            💳 Thanh Toán VietQR ({(selectedPlanAmount || 0).toLocaleString("vi-VN")} VNĐ)
+          </button>
             <p className="text-[10px] text-slate-500">
               Tự động kích hoạt Credits ngay sau 3s - 5s chuyển khoản thành công.
             </p>
