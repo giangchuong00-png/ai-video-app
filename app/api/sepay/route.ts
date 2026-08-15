@@ -24,7 +24,8 @@ export async function POST(request: Request) {
     const body = await request.json()
     console.log("SePay Webhook Body:", body)
 
-    const { content, transferAmount } = body
+    const content = body.content || body.description || ""
+    const transferAmount = body.transferAmount || body.amount || 0
 
     if (!content || !transferAmount) {
       return NextResponse.json({ success: true, message: 'No content or amount' }, { status: 200 })
@@ -34,21 +35,14 @@ export async function POST(request: Request) {
     const amountNum = Number(transferAmount)
     const creditsToAdd = CREDIT_MAPPING[amountNum] || Math.floor(amountNum / 1000)
 
-    if (creditsToAdd <= 0) {
-      return NextResponse.json({ success: true, message: 'Amount too low' }, { status: 200 })
-    }
-
-    // 2. Thuật toán tìm email thông minh (Xử lý việc ngân hàng xóa mất dấu chấm)
+    // 2. Thuật toán tìm email người dùng từ nội dung chuyển khoản
     let userEmail: string | null = null
     const cleanContent = content.toLowerCase()
 
-    // Trường hợp A: Có email chuẩn đầy đủ ký tự
     const standardEmailMatch = cleanContent.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/)
     if (standardEmailMatch) {
       userEmail = standardEmailMatch[0]
-    } 
-    // Trường hợp B: Ngân hàng xóa mất dấu chấm (VD: gtran7214@gmailcom hoặc gtran7214 gmail com)
-    else {
+    } else {
       const matchNoDot = cleanContent.match(/([a-zA-Z0-9._%+-]+)@([a-zA-Z0-9]+)(com|vn|net|org)/)
       if (matchNoDot) {
         userEmail = `${matchNoDot[1]}@${matchNoDot[2]}.${matchNoDot[3]}`
@@ -60,45 +54,63 @@ export async function POST(request: Request) {
       }
     }
 
-    if (userEmail) {
-      userEmail = userEmail.trim()
+    if (!userEmail) {
+      return NextResponse.json({ 
+        success: false, 
+        message: `Không bóc tách được email từ nội dung: "${content}"` 
+      }, { status: 200 })
+    }
 
-      // Lấy số credit hiện tại của user
-      const { data: userData } = await supabase
+    userEmail = userEmail.trim()
+
+    // 3. Kiểm tra user trong bảng users
+    const { data: existingUser, error: selectError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('email', userEmail)
+      .maybeSingle()
+
+    if (selectError) {
+      console.error('Supabase Select Error:', selectError)
+    }
+
+    if (existingUser) {
+      // Đã có tài khoản: Cộng thêm credits
+      const newCredits = (existingUser.credits || 0) + creditsToAdd
+      const { error: updateError } = await supabase
         .from('users')
-        .select('credits')
+        .update({ credits: newCredits })
         .eq('email', userEmail)
-        .maybeSingle()
 
-      const currentCredits = userData?.credits || 0
-      const newCredits = currentCredits + creditsToAdd
-
-      // Cập nhật hoặc tự tạo hàng mới nếu chưa có
-      const { error: upsertError } = await supabase
-        .from('users')
-        .upsert(
-          { email: userEmail, credits: newCredits },
-          { onConflict: 'email' }
-        )
-
-      if (upsertError) {
-        console.error('Lỗi Supabase:', upsertError)
-        return NextResponse.json({ error: upsertError.message }, { status: 500 })
+      if (updateError) {
+        return NextResponse.json({ success: false, error: updateError.message }, { status: 200 })
       }
 
       return NextResponse.json({
         success: true,
-        message: `Đã cộng thành công ${creditsToAdd} credits cho ${userEmail}`,
-        newCredits,
+        message: `Đã cộng ${creditsToAdd} credits cho ${userEmail}. Tổng mới: ${newCredits}`,
+        newCredits
+      }, { status: 200 })
+    } else {
+      // Chưa có dòng trong bảng users: Tạo dòng mới
+      const { error: insertError } = await supabase
+        .from('users')
+        .insert({ email: userEmail, credits: creditsToAdd })
+
+      if (insertError) {
+        return NextResponse.json({ success: false, error: insertError.message }, { status: 200 })
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: `Tạo mới user và cộng ${creditsToAdd} credits cho ${userEmail}`,
+        newCredits: creditsToAdd
       }, { status: 200 })
     }
 
-    return NextResponse.json({ 
-      success: false, 
-      message: `Không bóc tách được email từ nội dung: "${content}"` 
-    }, { status: 200 })
   } catch (error: any) {
-    console.error('Lỗi Server:', error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    console.error('Lỗi Exception Webhook:', error)
+    // Luôn trả về HTTP 200 để tránh SePay báo lỗi 500 đỏ
+    return NextResponse.json({ success: false, error: error.message }, { status: 200 })
   }
 }
