@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-// Sử dụng key quyền cao nếu có, hoặc dùng Anon Key
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 const supabase = createClient(supabaseUrl, supabaseKey)
 
@@ -23,7 +22,7 @@ const CREDIT_MAPPING: Record<number, number> = {
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    console.log("SePay Webhook Data:", body)
+    console.log("SePay Webhook Body:", body)
 
     const { content, transferAmount } = body
 
@@ -39,11 +38,30 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, message: 'Amount too low' }, { status: 200 })
     }
 
-    // 2. Tìm email người dùng trong nội dung chuyển khoản (Memo)
-    const emailMatch = content.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/)
+    // 2. Thuật toán tìm email thông minh (Xử lý việc ngân hàng xóa mất dấu chấm)
+    let userEmail: string | null = null
+    const cleanContent = content.toLowerCase()
 
-    if (emailMatch) {
-      const userEmail = emailMatch[0].toLowerCase().trim()
+    // Trường hợp A: Có email chuẩn đầy đủ ký tự
+    const standardEmailMatch = cleanContent.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/)
+    if (standardEmailMatch) {
+      userEmail = standardEmailMatch[0]
+    } 
+    // Trường hợp B: Ngân hàng xóa mất dấu chấm (VD: gtran7214@gmailcom hoặc gtran7214 gmail com)
+    else {
+      const matchNoDot = cleanContent.match(/([a-zA-Z0-9._%+-]+)@([a-zA-Z0-9]+)(com|vn|net|org)/)
+      if (matchNoDot) {
+        userEmail = `${matchNoDot[1]}@${matchNoDot[2]}.${matchNoDot[3]}`
+      } else {
+        const matchSpace = cleanContent.match(/([a-zA-Z0-9._%+-]+)\s*@?\s*gmail\s*com/)
+        if (matchSpace) {
+          userEmail = `${matchSpace[1].replace(/[^a-zA-Z0-9._%+-]/g, '')}@gmail.com`
+        }
+      }
+    }
+
+    if (userEmail) {
+      userEmail = userEmail.trim()
 
       // Lấy số credit hiện tại của user
       const { data: userData } = await supabase
@@ -55,7 +73,7 @@ export async function POST(request: Request) {
       const currentCredits = userData?.credits || 0
       const newCredits = currentCredits + creditsToAdd
 
-      // Cập nhật credits vào database
+      // Cập nhật hoặc tự tạo hàng mới nếu chưa có
       const { error: upsertError } = await supabase
         .from('users')
         .upsert(
@@ -64,7 +82,7 @@ export async function POST(request: Request) {
         )
 
       if (upsertError) {
-        console.error('Supabase error:', upsertError)
+        console.error('Lỗi Supabase:', upsertError)
         return NextResponse.json({ error: upsertError.message }, { status: 500 })
       }
 
@@ -75,9 +93,12 @@ export async function POST(request: Request) {
       }, { status: 200 })
     }
 
-    return NextResponse.json({ success: true, message: 'No email found in memo' }, { status: 200 })
+    return NextResponse.json({ 
+      success: false, 
+      message: `Không bóc tách được email từ nội dung: "${content}"` 
+    }, { status: 200 })
   } catch (error: any) {
-    console.error('Lỗi Webhook:', error)
+    console.error('Lỗi Server:', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }
