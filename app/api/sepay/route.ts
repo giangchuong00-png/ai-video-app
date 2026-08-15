@@ -35,22 +35,17 @@ export async function POST(request: Request) {
     const amountNum = Number(transferAmount)
     const creditsToAdd = CREDIT_MAPPING[amountNum] || Math.floor(amountNum / 1000)
 
-    // 2. Thuật toán tìm email người dùng từ nội dung chuyển khoản
+    // 2. Tìm email người dùng từ nội dung chuyển khoản
     let userEmail: string | null = null
     const cleanContent = content.toLowerCase()
 
-    const standardEmailMatch = cleanContent.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/)
-    if (standardEmailMatch) {
-      userEmail = standardEmailMatch[0]
+    const standardMatch = cleanContent.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/)
+    if (standardMatch) {
+      userEmail = standardMatch[0]
     } else {
-      const matchNoDot = cleanContent.match(/([a-zA-Z0-9._%+-]+)@([a-zA-Z0-9]+)(com|vn|net|org)/)
-      if (matchNoDot) {
-        userEmail = `${matchNoDot[1]}@${matchNoDot[2]}.${matchNoDot[3]}`
-      } else {
-        const matchSpace = cleanContent.match(/([a-zA-Z0-9._%+-]+)\s*@?\s*gmail\s*com/)
-        if (matchSpace) {
-          userEmail = `${matchSpace[1].replace(/[^a-zA-Z0-9._%+-]/g, '')}@gmail.com`
-        }
+      const missingDotMatch = cleanContent.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9-]+)(com|vn|net|org)/)
+      if (missingDotMatch) {
+        userEmail = `${missingDotMatch[1]}.${missingDotMatch[2]}`
       }
     }
 
@@ -61,24 +56,26 @@ export async function POST(request: Request) {
       }, { status: 200 })
     }
 
-    userEmail = userEmail.trim()
+    userEmail = userEmail.trim().toLowerCase()
 
-    // 3. Kiểm tra user trong bảng users
-    const { data: existingUser, error: selectError } = await supabase
-      .from('users')
-      .select('*')
+    // 3. Cập nhật credits vào bảng PROFILES chuẩn của bạn
+    const { data: existingProfile, error: fetchError } = await supabase
+      .from('profiles')
+      .select('id, credits')
       .eq('email', userEmail)
       .maybeSingle()
 
-    if (selectError) {
-      console.error('Supabase Select Error:', selectError)
+    if (fetchError) {
+      console.error('Fetch error:', fetchError)
+      return NextResponse.json({ success: false, error: fetchError.message }, { status: 200 })
     }
 
-    if (existingUser) {
-      // Đã có tài khoản: Cộng thêm credits
-      const newCredits = (existingUser.credits || 0) + creditsToAdd
+    if (existingProfile) {
+      const currentCredits = existingProfile.credits || 0
+      const newCredits = currentCredits + creditsToAdd
+
       const { error: updateError } = await supabase
-        .from('users')
+        .from('profiles')
         .update({ credits: newCredits })
         .eq('email', userEmail)
 
@@ -92,25 +89,14 @@ export async function POST(request: Request) {
         newCredits
       }, { status: 200 })
     } else {
-      // Chưa có dòng trong bảng users: Tạo dòng mới
-      const { error: insertError } = await supabase
-        .from('users')
-        .insert({ email: userEmail, credits: creditsToAdd })
-
-      if (insertError) {
-        return NextResponse.json({ success: false, error: insertError.message }, { status: 200 })
-      }
-
-      return NextResponse.json({
-        success: true,
-        message: `Tạo mới user và cộng ${creditsToAdd} credits cho ${userEmail}`,
-        newCredits: creditsToAdd
+      return NextResponse.json({ 
+        success: false, 
+        message: `Không tìm thấy tài khoản email ${userEmail} trong bảng profiles. Vui lòng đăng nhập trước!` 
       }, { status: 200 })
     }
 
   } catch (error: any) {
-    console.error('Lỗi Exception Webhook:', error)
-    // Luôn trả về HTTP 200 để tránh SePay báo lỗi 500 đỏ
+    console.error('Lỗi Server:', error)
     return NextResponse.json({ success: false, error: error.message }, { status: 200 })
   }
 }
