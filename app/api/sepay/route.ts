@@ -7,13 +7,10 @@ const supabase = createClient(supabaseUrl, supabaseKey)
 
 // BẢNG QUY ĐỔI CHUẨN BETA & GÓI THÁNG
 const CREDIT_MAPPING: Record<number, number> = {
-  // Gói nạp lẻ Beta
   20000: 96,
   50000: 240,
   100000: 530,
   200000: 1080,
-
-  // Gói tháng
   249000: 1200,
   499000: 2600,
   999000: 5500,
@@ -31,11 +28,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, message: 'No content or amount' }, { status: 200 })
     }
 
-    // 1. Tính toán số credits cần cộng
     const amountNum = Number(transferAmount)
     const creditsToAdd = CREDIT_MAPPING[amountNum] || Math.floor(amountNum / 1000)
 
-    // 2. Tìm email người dùng từ nội dung chuyển khoản
     let userEmail: string | null = null
     const cleanContent = content.toLowerCase()
 
@@ -58,30 +53,22 @@ export async function POST(request: Request) {
 
     userEmail = userEmail.trim().toLowerCase()
 
-    // 3. Cập nhật credits vào bảng PROFILES chuẩn của bạn
-    const { data: existingProfile, error: fetchError } = await supabase
+    // 3. Tìm profile hiện tại
+    const { data: existingProfile } = await supabase
       .from('profiles')
       .select('id, credits')
       .eq('email', userEmail)
       .maybeSingle()
 
-    if (fetchError) {
-      console.error('Fetch error:', fetchError)
-      return NextResponse.json({ success: false, error: fetchError.message }, { status: 200 })
-    }
-
     if (existingProfile) {
+      // Đã có -> Cập nhật cộng thêm credits
       const currentCredits = existingProfile.credits || 0
       const newCredits = currentCredits + creditsToAdd
 
-      const { error: updateError } = await supabase
+      await supabase
         .from('profiles')
         .update({ credits: newCredits })
         .eq('email', userEmail)
-
-      if (updateError) {
-        return NextResponse.json({ success: false, error: updateError.message }, { status: 200 })
-      }
 
       return NextResponse.json({
         success: true,
@@ -89,9 +76,24 @@ export async function POST(request: Request) {
         newCredits
       }, { status: 200 })
     } else {
-      return NextResponse.json({ 
-        success: false, 
-        message: `Không tìm thấy tài khoản email ${userEmail} trong bảng profiles. Vui lòng đăng nhập trước!` 
+      // Chưa có -> Tự động thêm mới vào profiles luôn
+      const { error: insertError } = await supabase
+        .from('profiles')
+        .insert({ 
+          email: userEmail, 
+          credits: creditsToAdd,
+          full_name: userEmail.split('@')[0]
+        })
+
+      if (insertError) {
+        console.error('Insert error:', insertError)
+        return NextResponse.json({ success: false, error: insertError.message }, { status: 200 })
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: `Tạo mới profile và cộng ${creditsToAdd} credits cho ${userEmail}`,
+        newCredits: creditsToAdd
       }, { status: 200 })
     }
 
