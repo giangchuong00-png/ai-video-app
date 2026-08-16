@@ -125,7 +125,7 @@ export default function Home() {
     // 2. Tự động lấy email chuẩn của tài khoản và tạo mã VietQR MBBank
     const currentEmail = user.email.toLowerCase().trim();
     const amount = selectedPlanAmount || 50000;
-    const memo = `REELBO ${currentEmail}`;
+    const memo = `REELBO RB100`;
     const qrUrl = `https://img.vietqr.io/image/MB-0914285399-compact2.png?amount=${amount}&addInfo=${encodeURIComponent(memo)}`;
 
     window.open(qrUrl, "_blank");
