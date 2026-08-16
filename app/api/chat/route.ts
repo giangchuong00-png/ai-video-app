@@ -16,30 +16,234 @@ type RequestBody = {
   message?: string;
   duration?: "15s" | "30s" | "60s" | string;
 
-  // Chuẩn bị cho frontend V2
   product?: string;
   userNote?: string;
   referenceUrl?: string;
+
   mode?: "creative" | "motion";
+
   recentScripts?: RecentScript[];
 };
 
+type CreativeRoute = {
+  content_type: string;
+  angle: string;
+  hook: string;
+  structure: string;
+  perspective: string;
+  visual_opening: string;
+};
+
+// =========================================================
+// CREATIVE ROUTE LIBRARY
+//
+// Đây là tầng chiến lược.
+// Không phải template lời thoại.
+// Model bắt buộc lấy một route khác khi Tạo lại.
+// =========================================================
+
+const CREATIVE_ROUTES: CreativeRoute[] = [
+  {
+    content_type: "problem solution",
+    angle: "pain point",
+    hook: "specific pain",
+    structure: "problem → tension → solution → payoff",
+    perspective: "người đang trực tiếp gặp vấn đề",
+    visual_opening: "mở bằng vấn đề thực tế trước khi cho thấy sản phẩm",
+  },
+
+  {
+    content_type: "lifestyle",
+    angle: "lifestyle",
+    hook: "relatable situation",
+    structure: "scenario → discovery → payoff",
+    perspective: "một khoảnh khắc đời thường cụ thể",
+    visual_opening: "bắt đầu bằng hành động đời thường không giới thiệu sản phẩm",
+  },
+
+  {
+    content_type: "comparison",
+    angle: "comparison",
+    hook: "visual comparison",
+    structure: "A vs B → difference → recommendation",
+    perspective: "so sánh hai lựa chọn hoặc hai trạng thái",
+    visual_opening: "split comparison hoặc thay đổi trực tiếp trước camera",
+  },
+
+  {
+    content_type: "demo",
+    angle: "product experience",
+    hook: "demonstration first",
+    structure: "demo → reaction → benefit → payoff",
+    perspective: "trải nghiệm trực tiếp",
+    visual_opening: "sản phẩm hoạt động ngay từ frame đầu, chưa cần nói",
+  },
+
+  {
+    content_type: "objection handling",
+    angle: "objection",
+    hook: "objection first",
+    structure: "objection → test → proof → conclusion",
+    perspective: "người từng nghi ngờ sản phẩm",
+    visual_opening: "mở bằng điều khiến người mua còn lăn tăn",
+  },
+
+  {
+    content_type: "transformation",
+    angle: "transformation",
+    hook: "result first",
+    structure: "result → before → change → after",
+    perspective: "kết quả sau sử dụng",
+    visual_opening: "show kết quả trước rồi mới giải thích",
+  },
+
+  {
+    content_type: "product discovery",
+    angle: "curiosity",
+    hook: "curiosity gap",
+    structure: "mystery → reveal → demo → payoff",
+    perspective: "phát hiện một thứ đáng chú ý",
+    visual_opening: "giấu một phần sản phẩm hoặc kết quả rồi reveal",
+  },
+
+  {
+    content_type: "scenario",
+    angle: "convenience",
+    hook: "specific situation",
+    structure: "situation → friction → product → easier outcome",
+    perspective: "một tình huống sử dụng cụ thể",
+    visual_opening: "bắt đầu bằng tình huống cần giải quyết nhanh",
+  },
+
+  {
+    content_type: "direct response",
+    angle: "value",
+    hook: "unexpected value",
+    structure: "expectation → reveal → proof → CTA",
+    perspective: "giá trị nhận được so với kỳ vọng",
+    visual_opening: "mở bằng kết quả hoặc trải nghiệm trông vượt kỳ vọng",
+  },
+
+  {
+    content_type: "POV",
+    angle: "identity",
+    hook: "persona statement",
+    structure: "identity → situation → product fit → payoff",
+    perspective: "một kiểu người cụ thể",
+    visual_opening: "POV tình huống gắn với persona",
+  },
+
+  {
+    content_type: "educational selling",
+    angle: "mistake",
+    hook: "mistake",
+    structure: "mistake → consequence → better method → product",
+    perspective: "người chỉ ra một lỗi thường gặp",
+    visual_opening: "show lỗi hoặc cách dùng sai trước",
+  },
+
+  {
+    content_type: "KOC recommendation",
+    angle: "experience",
+    hook: "honest observation",
+    structure: "observation → experience → useful detail → recommendation",
+    perspective: "KOC chia sẻ trải nghiệm thật",
+    visual_opening: "một chi tiết nhỏ được phát hiện trong lúc sử dụng",
+  },
+
+  {
+    content_type: "mini story",
+    angle: "emotional payoff",
+    hook: "unfinished situation",
+    structure: "setup → tension → discovery → payoff",
+    perspective: "mini story đời thường",
+    visual_opening: "bắt đầu giữa một tình huống đang diễn ra",
+  },
+
+  {
+    content_type: "routine",
+    angle: "habit",
+    hook: "routine interruption",
+    structure: "routine → friction → product integration → outcome",
+    perspective: "thói quen hằng ngày",
+    visual_opening: "một routine bình thường rồi xuất hiện friction",
+  },
+
+  {
+    content_type: "before after",
+    angle: "aesthetics",
+    hook: "before after",
+    structure: "before → switch → after → reason",
+    perspective: "thay đổi visual",
+    visual_opening: "before state rõ ràng ngay frame đầu",
+  },
+
+  {
+    content_type: "social proof",
+    angle: "social proof",
+    hook: "social observation",
+    structure: "observation → reason → proof → recommendation",
+    perspective: "quan sát từ hành vi nhiều người",
+    visual_opening: "show nhiều lựa chọn/feedback/tình huống sử dụng",
+  },
+
+  {
+    content_type: "confession",
+    angle: "hidden benefit",
+    hook: "confession",
+    structure: "confession → unexpected detail → demo → payoff",
+    perspective: "người dùng thú nhận một điều không ngờ",
+    visual_opening: "bắt đầu bằng reaction hoặc hành vi bất ngờ",
+  },
+
+  {
+    content_type: "challenge",
+    angle: "result",
+    hook: "challenge",
+    structure: "challenge → test → result → verdict",
+    perspective: "đưa sản phẩm vào một bài test",
+    visual_opening: "test bắt đầu ngay frame đầu",
+  },
+
+  {
+    content_type: "UGC review",
+    angle: "comfort",
+    hook: "micro experience",
+    structure: "first impression → use → detail → verdict",
+    perspective: "first-person UGC",
+    visual_opening: "cận hành động sử dụng, không giới thiệu dài",
+  },
+
+  {
+    content_type: "scenario",
+    angle: "desire",
+    hook: "desired moment",
+    structure: "desired situation → product → emotional payoff",
+    perspective: "điều khách hàng muốn cảm nhận",
+    visual_opening: "show khoảnh khắc mong muốn trước",
+  },
+];
+
 // =========================================================
 // TIKTOK METADATA
-// Hiện tại vẫn chỉ lấy metadata.
-// Sau này sẽ nâng cấp thành Media Analyzer thật.
+//
+// Hiện tại mới lấy metadata.
+// Chưa phải video analyzer thật.
 // =========================================================
 
 async function fetchTiktokDataViaApi(tiktokUrl: string) {
   try {
     const response = await fetch("https://www.tikwm.com/api/", {
       method: "POST",
+
       headers: {
         "Content-Type":
           "application/x-www-form-urlencoded; charset=UTF-8",
+
         "User-Agent":
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
       },
+
       body: new URLSearchParams({
         url: tiktokUrl,
         count: "12",
@@ -47,13 +251,12 @@ async function fetchTiktokDataViaApi(tiktokUrl: string) {
         web: "1",
         hd: "1",
       }),
+
       cache: "no-store",
     });
 
     if (!response.ok) {
-      throw new Error(
-        `TikWM HTTP ${response.status}`
-      );
+      throw new Error(`TikWM HTTP ${response.status}`);
     }
 
     const result = await response.json();
@@ -74,6 +277,7 @@ async function fetchTiktokDataViaApi(tiktokUrl: string) {
 
       return {
         success: true,
+
         data: {
           title,
           author,
@@ -111,7 +315,8 @@ function extractTikTokUrl(
   const regex =
     /(https?:\/\/[^\s]*tiktok\.com[^\s]*)/gi;
 
-  const match = text.match(regex);
+  const match =
+    text.match(regex);
 
   return match?.[0] || null;
 }
@@ -147,18 +352,163 @@ function buildRecentScriptContext(
     .map((item, index) => {
       return `
 Phiên bản ${index + 1}
-- Hook: ${item.hook || "N/A"}
-- Sales angle: ${
-        item.sales_angle || "N/A"
-      }
-- Structure: ${
-        item.structure || "N/A"
-      }
-- Content type: ${
-        item.content_type || "N/A"
-      }
+
+Hook / ý mở đầu:
+${item.hook || "N/A"}
+
+Sales angle:
+${item.sales_angle || "N/A"}
+
+Structure:
+${item.structure || "N/A"}
+
+Content type:
+${item.content_type || "N/A"}
 `;
     })
+    .join("\n");
+}
+
+// =========================================================
+// NORMALIZE TEXT ĐỂ KIỂM TRA LẶP
+// =========================================================
+
+function normalizeText(text: string) {
+  return text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function textTokens(text: string) {
+  return new Set(
+    normalizeText(text)
+      .split(" ")
+      .filter((word) => word.length > 2)
+  );
+}
+
+// Jaccard similarity.
+// Không cần embedding cho MVP.
+function calculateSimilarity(
+  a: string,
+  b: string
+) {
+  if (!a || !b) {
+    return 0;
+  }
+
+  const setA =
+    textTokens(a);
+
+  const setB =
+    textTokens(b);
+
+  if (
+    setA.size === 0 ||
+    setB.size === 0
+  ) {
+    return 0;
+  }
+
+  let intersection = 0;
+
+  for (const token of setA) {
+    if (setB.has(token)) {
+      intersection++;
+    }
+  }
+
+  const union =
+    new Set([...setA, ...setB]).size;
+
+  return union === 0
+    ? 0
+    : intersection / union;
+}
+
+// =========================================================
+// LẤY REPRESENTATIVE IDEA CỦA SCRIPT
+//
+// Không chỉ kiểm tra field hook.
+// Ghép hook + scene 1 để phát hiện kiểu:
+// "tuổi thiếu nhi → tuổi thiếu tiền"
+// bị paraphrase.
+// =========================================================
+
+function getScriptIdea(script: any) {
+  const hook =
+    script?.hook || "";
+
+  const scene1Voice =
+    script?.scenes?.[0]
+      ?.voiceover || "";
+
+  return `${hook} ${scene1Voice}`.trim();
+}
+
+function isTooSimilarToHistory(
+  script: any,
+  recentScripts: RecentScript[]
+) {
+  if (!recentScripts.length) {
+    return false;
+  }
+
+  const currentIdea =
+    getScriptIdea(script);
+
+  if (!currentIdea) {
+    return false;
+  }
+
+  for (const old of recentScripts) {
+    if (!old.hook) continue;
+
+    const similarity =
+      calculateSimilarity(
+        currentIdea,
+        old.hook
+      );
+
+    console.log(
+      `[Reelbo Diversity] Similarity: ${similarity.toFixed(2)}`
+    );
+
+    // Có thể chỉnh 0.42 sau này.
+    if (similarity >= 0.42) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+// =========================================================
+// FORBIDDEN HOOKS
+// =========================================================
+
+function buildForbiddenIdeas(
+  recentScripts: RecentScript[]
+) {
+  const hooks =
+    recentScripts
+      .slice(-8)
+      .map((item) => item.hook)
+      .filter(Boolean);
+
+  if (!hooks.length) {
+    return "Chưa có ý tưởng bị cấm.";
+  }
+
+  return hooks
+    .map(
+      (hook, index) =>
+        `${index + 1}. ${hook}`
+    )
     .join("\n");
 }
 
@@ -169,64 +519,70 @@ Phiên bản ${index + 1}
 const SYSTEM_PROMPT = `
 Bạn là REELBO SCRIPT ENGINE.
 
-Bạn không phải một AI chỉ viết caption hoặc tạo
-một template TikTok duy nhất.
+Bạn là hệ thống chiến lược nội dung video bán hàng,
+không phải template writer.
 
-Bạn là một hệ thống chiến lược nội dung bán hàng,
-có nhiệm vụ phân tích input, tự lựa chọn chiến lược,
-sau đó mới tạo kịch bản.
-
-MỤC TIÊU:
-
-Tạo video bán hàng ngắn có:
-- hook mạnh nhưng không rập khuôn
-- lời thoại tự nhiên
-- visual có mục đích
-- góc bán hàng đa dạng
-- phù hợp ngành hàng
-- phù hợp thời lượng
-- tránh lặp ý tưởng giữa các lần tạo
+Mục tiêu là tạo ra số lượng rất lớn các concept
+bán hàng khác nhau cho nhiều ngành hàng.
 
 ==================================================
-1. NGUYÊN TẮC CỐT LÕI
+1. QUY TẮC CỐT LÕI
 ==================================================
 
-Không được hoạt động như template writer.
+Mỗi request phải được xem là một creative problem mới.
 
-Không mặc định dùng:
-- "Mọi người ơi..."
-- "Bạn có biết..."
-- "Nếu bạn đang..."
-- "Đừng mua..."
-- "Trời ơi..."
-- "Không ngờ..."
-- "Đây là..."
+Không được chỉ thay câu chữ của kịch bản cũ.
 
-Chỉ dùng nếu thật sự phù hợp.
+Một kịch bản được coi là THỰC SỰ MỚI khi thay đổi
+ít nhất nhiều yếu tố cấp chiến lược như:
 
-Không được tạo biến thể bằng cách chỉ thay
-vài từ đồng nghĩa.
-
-Mỗi kịch bản mới phải khác ở cấp chiến lược.
+- insight
+- sales angle
+- hook mechanism
+- customer perspective
+- emotional trigger
+- narrative structure
+- opening visual
+- demonstration style
+- CTA logic
 
 ==================================================
-2. PHÂN TÍCH INPUT
+2. KHÔNG MẶC ĐỊNH DÙNG CÁC HOOK SAU
 ==================================================
 
-Tự xác định:
+Không mặc định:
 
-- sản phẩm/dịch vụ
-- ngành hàng
-- khách hàng tiềm năng
-- nhu cầu chính
-- nỗi đau
-- mong muốn
+"Mọi người ơi..."
+"Bạn có biết..."
+"Nếu bạn đang..."
+"Đừng mua..."
+"Trời ơi..."
+"Không ngờ..."
+"Đây là..."
+
+Không mặc định sử dụng joke,
+wordplay hoặc câu chơi chữ.
+
+Một câu từng hiệu quả không có nghĩa
+là phải tái sử dụng.
+
+==================================================
+3. PHÂN TÍCH SẢN PHẨM
+==================================================
+
+Trước khi viết, tự xác định:
+
+- product
+- category
+- probable customer
+- core desire
+- pain
 - objection
 - buying trigger
-- điểm đáng khai thác
-- mức độ nhận thức của người xem
+- awareness stage
+- available facts
 
-Awareness có thể là:
+Awareness:
 
 - unaware
 - problem aware
@@ -234,249 +590,103 @@ Awareness có thể là:
 - product aware
 - ready to buy
 
-Nếu dữ liệu thiếu:
-không hỏi user ngay.
-Hãy suy luận hợp lý từ context.
+==================================================
+4. SOURCE OF TRUTH
+==================================================
 
-Không được tự bịa:
+Không tự bịa:
+
 - giá
 - ưu đãi
-- chứng nhận
 - thành phần
-- claim y tế
-- thông số kỹ thuật
+- chất liệu
+- chứng nhận
+- claim sức khỏe
+- thông số
+- tính năng chưa được cung cấp
+
+Dữ liệu user là source of truth.
 
 ==================================================
-3. STRATEGY ENGINE
+5. CREATIVE ROUTE
 ==================================================
 
-TRƯỚC KHI VIẾT KỊCH BẢN,
-phải tự chọn một chiến lược.
+Mỗi request sẽ nhận một CREATIVE ROUTE bắt buộc.
 
-CONTENT TYPE có thể gồm:
+Route gồm:
 
-- direct response
-- UGC review
-- KOC recommendation
-- demo
-- problem solution
-- mini story
-- comparison
-- before after
-- lifestyle
-- testimonial
-- educational selling
-- objection handling
-- product discovery
-- unboxing
-- scenario
-- challenge
-- social proof
-- routine
-- transformation
-- listicle
-- confession
-- POV
-
-SALES ANGLE có thể gồm:
-
-- pain
-- desire
-- convenience
-- saving time
-- saving money
-- value
-- premium feeling
-- social proof
-- curiosity
-- transformation
-- mistake
-- problem solving
-- hidden benefit
-- ease of use
-- emotional payoff
-- confidence
-- comfort
-- aesthetics
-- productivity
-- comparison
-- objection
-- unexpected use
-- scarcity
-- habit
-- identity
-- lifestyle
-- result
-- experience
-
-HOOK MECHANISM có thể gồm:
-
-- visual result first
-- curiosity gap
-- specific pain
-- relatable situation
-- demonstration first
-- objection
-- surprising comparison
-- confession
-- strong opinion
-- pattern interrupt
-- challenge
-- mistake
-- before after
-- social proof
-- direct benefit
-- scenario
-- contradiction
-- question
-- observation
-- product reveal
-- price value reveal
-
-STRUCTURE có thể gồm:
-
-- hook → demo → payoff → CTA
-- hook → problem → solution → CTA
-- hook → scenario → discovery → payoff
-- result → explanation → demo → CTA
-- pain → agitation → solution → proof
-- before → process → after
-- objection → proof → recommendation
-- story → tension → product → result
-- visual reveal → benefit → proof
-- problem → mistake → better method
-- routine → product integration → outcome
-
-Không chọn ngẫu nhiên vô nghĩa.
-Chọn tổ hợp phù hợp với sản phẩm và khách hàng.
-
-==================================================
-4. ANTI-REPETITION
-==================================================
-
-Nếu có danh sách kịch bản gần đây:
-
-KHÔNG lặp lại đồng thời:
+- content type
+- angle
 - hook mechanism
-- sales angle
-- narrative structure
-- opening visual
-- CTA pattern
-
-Ưu tiên chọn một nhánh chiến lược chưa dùng.
-
-Nếu bắt buộc dùng lại angle,
-phải thay:
-- perspective
-- hook
-- visual opening
 - structure
-hoặc
-- emotional trigger
+- perspective
+- visual opening
+
+BẮT BUỘC tuân thủ route.
+
+Không được quay trở lại concept quen thuộc
+chỉ vì model đánh giá nó "viral" hơn.
 
 ==================================================
-5. THỜI LƯỢNG
+6. SEMANTIC ANTI-REPETITION
 ==================================================
 
-15 GIÂY:
+Danh sách "Ý TƯỞNG ĐÃ DÙNG" không chỉ cấm copy chữ.
 
-Chỉ nên có 1 ý tưởng chính.
+CẤM:
 
-Ưu tiên:
-Hook
-→ Demo/Proof
-→ Payoff
-→ CTA
+- paraphrase cùng ý
+- joke cùng logic
+- ẩn dụ cùng logic
+- insight cùng logic
+- opening premise cùng logic
 
-Khoảng 3 cảnh.
+Ví dụ:
 
-30 GIÂY:
+"qua tuổi thiếu nhi là tới tuổi thiếu tiền"
 
-Có thể:
-Hook
-→ Context/Problem
-→ Demo/Solution
-→ Benefit/Proof
-→ CTA
+và:
 
-Khoảng 4-6 cảnh.
+"hết thời thiếu nhi thì bước vào thời thiếu tiền"
 
-60 GIÂY:
+được coi là CÙNG MỘT CONCEPT.
 
-Có thể:
-Hook
-→ Context
-→ Problem/Tension
-→ Discovery
-→ Demo
-→ Proof
-→ Objection
-→ Payoff
-→ CTA
-
-Khoảng 7-10 cảnh.
-
-Không được lấy script 15s rồi kéo dài câu chữ
-để thành 30s/60s.
+Nếu concept đã tồn tại trong lịch sử,
+phải bỏ hoàn toàn premise đó và nghĩ premise khác.
 
 ==================================================
-6. VIDEO / LINK MẪU
+7. VIDEO / LINK REFERENCE
 ==================================================
 
-Nếu có dữ liệu reference:
+Nếu chỉ có metadata TikTok:
 
-Phân biệt:
+không được giả vờ đã xem video.
 
-FACTS:
-- sản phẩm
-- thông tin thật
-- lợi ích được cung cấp
+Metadata chỉ là một tín hiệu nhỏ.
 
-STRATEGY:
-- insight
-- hook mechanism
-- sales logic
-- pacing
-- emotional progression
+Nếu có reference:
 
-EXECUTION:
+có thể học:
+
+- facts
+- broad selling logic
+- category clues
+
+Không sao chép:
+
 - wording
-- shot order
-- camera
-- setting
-- blocking
-- performance
-
-Có thể học FACTS và STRATEGY.
-
-Không sao chép nguyên execution
-hoặc shot-by-shot.
-
-Không dùng khái niệm "khác 80%" hoặc "khác 90%"
-như một phép đo.
-
-Thay vào đó:
-tạo execution mới có:
-- bối cảnh mới
-- camera mới
-- blocking mới
-- cách demo mới
-- lời thoại mới
-- visual opening mới
-
-nhưng vẫn giữ logic bán hàng hữu ích.
+- exact hook
+- exact scene chain
+- exact blocking
+- exact execution
 
 ==================================================
-7. VISUAL ENGINE
+8. VISUAL ENGINE
 ==================================================
 
-Visual phải làm nhiệm vụ bán hàng.
+Visual phải giúp truyền tải sales argument.
 
-Không lặp kiểu:
-"cô gái cầm sản phẩm nhìn camera"
-ở mọi cảnh.
-
-Đa dạng shot:
+Dùng linh hoạt:
 
 - wide
 - medium
@@ -487,12 +697,15 @@ Không lặp kiểu:
 - over-the-shoulder
 - tracking
 - handheld
-- product insert
 - reveal
+- product insert
 - action shot
 - environmental shot
 
-Đa dạng location khi hợp lý:
+Không phải cảnh nào cũng:
+"người cầm sản phẩm nhìn camera".
+
+Location có thể gồm:
 
 - bedroom
 - living room
@@ -507,56 +720,78 @@ Không lặp kiểu:
 - car
 - dressing room
 
-Không đổi bối cảnh chỉ để khác.
-Bối cảnh phải phù hợp sản phẩm.
+Nhưng location phải có logic.
 
 ==================================================
-8. VOICEOVER
+9. VOICEOVER
 ==================================================
 
-Voiceover phải:
+Voiceover:
 
-- nghe như người thật nói
-- câu tương đối ngắn
+- nói như người thật
+- ngắn
+- dễ đọc
 - có nhịp
-- tự nhiên
-- không quá quảng cáo
-- phù hợp đối tượng
-- không spam emoji
+- không văn quảng cáo cứng
 - không cố giật gân
-
-Không nói những claim không có trong dữ liệu.
+- không spam claim
 
 ==================================================
-9. CTA
+10. THỜI LƯỢNG
 ==================================================
 
-CTA phải phù hợp stage của người xem.
+15s:
 
-Không phải video nào cũng:
-"Mua ngay".
+ưu tiên 1 concept.
+
+Khoảng 3 cảnh.
+
+Không nhồi quá nhiều luận điểm.
+
+30s:
+
+khoảng 4-6 cảnh.
+
+Có đủ:
+hook → context/problem → demo/proof → payoff.
+
+60s:
+
+khoảng 7-10 cảnh.
+
+Có thể kể story,
+xử lý objection,
+demo sâu hơn.
+
+Không kéo dài script 15s bằng filler.
+
+==================================================
+11. CTA
+==================================================
+
+CTA phụ thuộc awareness.
 
 Có thể:
-- xem sản phẩm
-- thử xem
+
+- xem thử
 - xem màu
-- kiểm tra ưu đãi
+- xem mẫu
+- kiểm tra link
 - lưu lại
-- xem link
 - cân nhắc
 - đặt hàng
-- thử phiên bản phù hợp
+
+Không mặc định "mua ngay".
 
 ==================================================
-10. OUTPUT
+12. OUTPUT
 ==================================================
 
 Chỉ trả JSON hợp lệ.
 
 Không markdown.
-Không giải thích ngoài JSON.
 
-Schema:
+Không giải thích ngoài JSON.
 
 {
   "strategy": {
@@ -596,9 +831,7 @@ Schema:
 // API ROUTE
 // =========================================================
 
-export async function POST(
-  req: Request
-) {
+export async function POST(req: Request) {
   try {
     const body: RequestBody =
       await req.json();
@@ -618,7 +851,7 @@ export async function POST(
       );
 
     // =====================================================
-    // 1. XÁC ĐỊNH LINK TIKTOK
+    // 1. TIKTOK
     // =====================================================
 
     const tiktokUrl =
@@ -642,29 +875,21 @@ TikTok URL:
 ${tiktokUrl}
 
 TikTok metadata:
-- Caption/title:
+
+Caption/title:
 ${tiktokResult.data.title || "Không có"}
 
-- Creator:
+Creator:
 ${tiktokResult.data.author || "Không có"}
 
-- Duration:
+Duration:
 ${tiktokResult.data.duration || "Không rõ"}
 `;
       }
     }
 
     // =====================================================
-    // 2. CREATIVE VARIATION SEED
-    // =====================================================
-
-    const variationSeed =
-      Math.floor(
-        Math.random() * 1_000_000_000
-      );
-
-    // =====================================================
-    // 3. RECENT HISTORY
+    // 2. HISTORY
     // =====================================================
 
     const recentContext =
@@ -672,82 +897,13 @@ ${tiktokResult.data.duration || "Không rõ"}
         recentScripts
       );
 
-    // =====================================================
-    // 4. USER PROMPT
-    // =====================================================
-
-    const userPrompt = `
-Hãy tạo một kịch bản mới cho Reelbo.
-
-==================================================
-REQUEST
-==================================================
-
-MODE:
-${mode}
-
-THỜI LƯỢNG:
-${duration}
-
-THÔNG TIN SẢN PHẨM:
-${
-  product.trim() ||
-  "Không có field sản phẩm riêng."
-}
-
-THÔNG TIN / YÊU CẦU USER:
-${
-  message.trim() ||
-  userNote.trim() ||
-  "Không có mô tả thêm."
-}
-
-GHI CHÚ THÊM:
-${userNote.trim() || "Không có"}
-
-==================================================
-REFERENCE DATA
-==================================================
-
-${
-  referenceData ||
-  "Không có dữ liệu reference."
-}
-
-LƯU Ý:
-Metadata TikTok KHÔNG đồng nghĩa với việc
-đã xem nội dung video.
-
-Không được tuyên bố rằng bạn đã xem video
-nếu request này chỉ chứa caption/title.
-
-==================================================
-KỊCH BẢN GẦN ĐÂY
-==================================================
-
-${recentContext}
-
-==================================================
-CREATIVE VARIATION
-==================================================
-
-Variation seed:
-${variationSeed}
-
-Seed chỉ là tín hiệu để chọn một nhánh
-ý tưởng khác, không được xuất seed cho user.
-
-Hãy:
-1. phân tích input
-2. chọn strategy
-3. kiểm tra strategy không quá giống lịch sử
-4. tạo script
-5. đảm bảo tổng scene duration phù hợp ${duration}
-6. trả đúng JSON schema
-`;
+    const forbiddenIdeas =
+      buildForbiddenIdeas(
+        recentScripts
+      );
 
     // =====================================================
-    // 5. API KEY
+    // 3. API KEY
     // =====================================================
 
     const apiKey =
@@ -759,7 +915,9 @@ Hãy:
           error:
             "Thiếu GEMINI_API_KEY.",
         },
-        { status: 500 }
+        {
+          status: 500,
+        }
       );
     }
 
@@ -769,7 +927,7 @@ Hãy:
       });
 
     // =====================================================
-    // 6. MODEL FALLBACK
+    // 4. MODELS
     // =====================================================
 
     const candidateModels = [
@@ -778,158 +936,426 @@ Hãy:
       "gemini-3.5-flash-lite",
     ];
 
-    let responseText = "";
     let lastError: any = null;
+
+    let finalScript: any =
+      null;
+
     let usedModel = "";
 
+    let finalRoute:
+      | CreativeRoute
+      | null = null;
+
+    let finalVariationSeed =
+      0;
+
+    // =====================================================
+    // 5. DIVERSITY RETRY LOOP
+    //
+    // Nếu hook mới còn quá giống history:
+    // backend tự regenerate.
+    // =====================================================
+
+    const MAX_CREATIVE_ATTEMPTS =
+      recentScripts.length > 0
+        ? 3
+        : 1;
+
     for (
-      const modelName of
-      candidateModels
+      let creativeAttempt = 0;
+      creativeAttempt <
+      MAX_CREATIVE_ATTEMPTS;
+      creativeAttempt++
     ) {
-      try {
-        console.log(
-          `[Reelbo] Trying ${modelName}`
+      // ===================================================
+      // ROUTE ROTATION
+      //
+      // Lần đầu history 0 -> route 0
+      // lần 2 history 1 -> route 1
+      // ...
+      //
+      // Retry cũng nhảy route tiếp theo.
+      // ===================================================
+
+      const routeIndex =
+        (recentScripts.length +
+          creativeAttempt) %
+        CREATIVE_ROUTES.length;
+
+      const selectedRoute =
+        CREATIVE_ROUTES[
+          routeIndex
+        ];
+
+      finalRoute =
+        selectedRoute;
+
+      const variationSeed =
+        Math.floor(
+          Math.random() *
+            1_000_000_000
         );
 
-        const response =
-          await ai.models.generateContent({
-            model: modelName,
+      finalVariationSeed =
+        variationSeed;
 
-            contents: [
-              {
-                role: "user",
-                parts: [
-                  {
-                    text: userPrompt,
-                  },
-                ],
-              },
-            ],
+      // ===================================================
+      // USER PROMPT
+      // ===================================================
 
-            config: {
-              systemInstruction:
-                SYSTEM_PROMPT,
+      const userPrompt = `
+Tạo một kịch bản bán hàng MỚI cho Reelbo.
 
-              responseMimeType:
-                "application/json",
-            },
-          });
+==================================================
+REQUEST
+==================================================
 
-        const text =
-          response.text || "";
+MODE:
+${mode}
 
-        if (text.trim()) {
-          responseText =
-            text.trim();
+THỜI LƯỢNG:
+${duration}
 
-          usedModel =
-            modelName;
+THÔNG TIN SẢN PHẨM DO USER CUNG CẤP:
 
+${
+  product.trim() ||
+  "User không nhập field sản phẩm riêng."
+}
+
+THÔNG TIN REQUEST:
+
+${
+  message.trim() ||
+  userNote.trim() ||
+  "Không có mô tả thêm."
+}
+
+==================================================
+REFERENCE
+==================================================
+
+${
+  referenceData ||
+  "Không có metadata reference."
+}
+
+CẢNH BÁO:
+
+Nếu trên chỉ có metadata TikTok,
+bạn CHƯA xem nội dung video.
+
+Không được suy diễn rằng đã xem chuyển động,
+lời thoại hoặc shot của video.
+
+==================================================
+CREATIVE ROUTE BẮT BUỘC
+==================================================
+
+CONTENT TYPE:
+${selectedRoute.content_type}
+
+SALES ANGLE:
+${selectedRoute.angle}
+
+HOOK MECHANISM:
+${selectedRoute.hook}
+
+NARRATIVE STRUCTURE:
+${selectedRoute.structure}
+
+PERSPECTIVE:
+${selectedRoute.perspective}
+
+VISUAL OPENING:
+${selectedRoute.visual_opening}
+
+Đây là creative route BẮT BUỘC.
+
+Không được đổi sang angle khác
+chỉ vì một concept khác quen thuộc hơn.
+
+==================================================
+LỊCH SỬ KỊCH BẢN
+==================================================
+
+${recentContext}
+
+==================================================
+Ý TƯỞNG / HOOK ĐÃ DÙNG — CẤM LẶP
+==================================================
+
+${forbiddenIdeas}
+
+CẤM cả:
+
+- copy nguyên văn
+- paraphrase
+- cùng joke
+- cùng premise
+- cùng semantic meaning
+
+Ví dụ nếu lịch sử có premise
+"tuổi thiếu nhi → tuổi thiếu tiền"
+
+thì mọi câu mang logic
+"lớn lên → thiếu tiền"
+đều bị coi là LẶP.
+
+Phải nghĩ một premise khác hoàn toàn.
+
+==================================================
+DIVERSITY RETRY
+==================================================
+
+Creative attempt:
+${creativeAttempt + 1}
+
+Variation seed:
+${variationSeed}
+
+${
+  creativeAttempt > 0
+    ? `
+Kịch bản trước trong chính request này
+đã bị backend đánh giá là QUÁ GIỐNG lịch sử.
+
+Ở lần này bắt buộc phải đổi insight,
+hook premise và opening scene mạnh hơn.
+`
+    : ""
+}
+
+==================================================
+NHIỆM VỤ
+==================================================
+
+1. Phân tích sản phẩm.
+2. Tuân thủ creative route bắt buộc.
+3. Loại bỏ các semantic premise đã dùng.
+4. Viết một concept thực sự mới.
+5. Tạo số cảnh phù hợp ${duration}.
+6. Tổng duration phải hợp lý.
+7. Trả đúng JSON schema.
+`;
+
+      let responseText = "";
+
+      // ===================================================
+      // MODEL FALLBACK
+      // ===================================================
+
+      for (
+        const modelName of
+        candidateModels
+      ) {
+        try {
           console.log(
-            `[Reelbo] Success: ${modelName}`
+            `[Reelbo] Creative attempt ${
+              creativeAttempt + 1
+            } | Trying ${modelName}`
           );
 
-          break;
-        }
-      } catch (error: any) {
-        lastError = error;
+          const response =
+            await ai.models.generateContent({
+              model: modelName,
 
-        const status =
-          error?.status ||
-          error?.response?.status;
+              contents: [
+                {
+                  role: "user",
 
-        const message =
-          error?.message || "";
+                  parts: [
+                    {
+                      text: userPrompt,
+                    },
+                  ],
+                },
+              ],
 
-        console.warn(
-          `[Reelbo] ${modelName} failed`,
-          status,
-          message
-        );
+              config: {
+                systemInstruction:
+                  SYSTEM_PROMPT,
 
-        // Những lỗi có khả năng model khác xử lý được.
-        const shouldFallback =
-          status === 404 ||
-          status === 408 ||
-          status === 429 ||
-          status === 500 ||
-          status === 502 ||
-          status === 503 ||
-          status === 504 ||
-          /timeout/i.test(message) ||
-          /overloaded/i.test(message) ||
-          /unavailable/i.test(message);
+                responseMimeType:
+                  "application/json",
+              },
+            });
 
-        // Lỗi request/config sai thì model khác
-        // thường cũng không cứu được.
-        if (
-          status &&
-          !shouldFallback
-        ) {
-          throw error;
+          const text =
+            response.text || "";
+
+          if (text.trim()) {
+            responseText =
+              text.trim();
+
+            usedModel =
+              modelName;
+
+            break;
+          }
+        } catch (error: any) {
+          lastError =
+            error;
+
+          const status =
+            error?.status ||
+            error?.response?.status;
+
+          const errorMessage =
+            error?.message || "";
+
+          console.warn(
+            `[Reelbo] ${modelName} failed`,
+            status,
+            errorMessage
+          );
+
+          const shouldFallback =
+            status === 404 ||
+            status === 408 ||
+            status === 429 ||
+            status === 500 ||
+            status === 502 ||
+            status === 503 ||
+            status === 504 ||
+            /timeout/i.test(
+              errorMessage
+            ) ||
+            /overloaded/i.test(
+              errorMessage
+            ) ||
+            /unavailable/i.test(
+              errorMessage
+            );
+
+          if (
+            status &&
+            !shouldFallback
+          ) {
+            throw error;
+          }
         }
       }
+
+      if (!responseText) {
+        continue;
+      }
+
+      // ===================================================
+      // PARSE JSON
+      // ===================================================
+
+      let parsedScript: any;
+
+      try {
+        parsedScript =
+          JSON.parse(
+            responseText
+          );
+      } catch {
+        const jsonMatch =
+          responseText.match(
+            /\{[\s\S]*\}/
+          );
+
+        if (!jsonMatch) {
+          console.warn(
+            "[Reelbo] Không tìm thấy JSON hợp lệ."
+          );
+
+          continue;
+        }
+
+        parsedScript =
+          JSON.parse(
+            jsonMatch[0]
+          );
+      }
+
+      // ===================================================
+      // VALIDATION
+      // ===================================================
+
+      if (
+        !parsedScript
+          ?.strategy ||
+        !Array.isArray(
+          parsedScript?.scenes
+        ) ||
+        parsedScript.scenes
+          .length === 0
+      ) {
+        console.warn(
+          "[Reelbo] Output thiếu strategy/scenes."
+        );
+
+        continue;
+      }
+
+      // ===================================================
+      // BACKEND DUPLICATE CHECK
+      // ===================================================
+
+      const tooSimilar =
+        isTooSimilarToHistory(
+          parsedScript,
+          recentScripts
+        );
+
+      if (
+        tooSimilar &&
+        creativeAttempt <
+          MAX_CREATIVE_ATTEMPTS -
+            1
+      ) {
+        console.warn(
+          "[Reelbo] Hook quá giống lịch sử. Regenerating..."
+        );
+
+        continue;
+      }
+
+      finalScript =
+        parsedScript;
+
+      break;
     }
 
-    if (!responseText) {
+    // =====================================================
+    // KHÔNG TẠO ĐƯỢC
+    // =====================================================
+
+    if (!finalScript) {
       throw (
         lastError ||
         new Error(
-          "Các model Gemini hiện không phản hồi."
+          "AI chưa tạo được kịch bản đủ khác biệt. Vui lòng thử lại."
         )
       );
     }
 
     // =====================================================
-    // 7. PARSE JSON
+    // SUCCESS
     // =====================================================
-
-    let parsedScript;
-
-    try {
-      parsedScript =
-        JSON.parse(responseText);
-    } catch {
-      const jsonMatch =
-        responseText.match(
-          /\{[\s\S]*\}/
-        );
-
-      if (!jsonMatch) {
-        throw new Error(
-          "Gemini không trả JSON hợp lệ."
-        );
-      }
-
-      parsedScript =
-        JSON.parse(
-          jsonMatch[0]
-        );
-    }
-
-    // =====================================================
-    // 8. BASIC VALIDATION
-    // =====================================================
-
-    if (
-      !parsedScript?.strategy ||
-      !Array.isArray(
-        parsedScript?.scenes
-      )
-    ) {
-      throw new Error(
-        "AI trả output thiếu strategy hoặc scenes."
-      );
-    }
 
     return NextResponse.json({
-      script: parsedScript,
+      script: finalScript,
 
       meta: {
-        model: usedModel,
-        variation_seed:
-          variationSeed,
+        model:
+          usedModel,
+
         duration,
+
+        variation_seed:
+          finalVariationSeed,
+
+        creative_route:
+          finalRoute,
+
+        history_count:
+          recentScripts.length,
       },
     });
   } catch (error: any) {
@@ -944,7 +1370,9 @@ Hãy:
           error?.message ||
           "Không thể tạo kịch bản AI.",
       },
-      { status: 500 }
+      {
+        status: 500,
+      }
     );
   }
 }
