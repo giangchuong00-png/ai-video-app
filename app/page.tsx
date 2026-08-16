@@ -68,7 +68,7 @@ export default function Home() {
       if (!currentUser?.email) return;
       try {
         const { data, error } = await supabase
-          .from("users")
+          .from("profiles")
           .select("credits")
           .eq("email", currentUser.email)
           .single();
