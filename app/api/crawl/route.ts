@@ -6,48 +6,58 @@ export async function POST(req: Request) {
 
     if (!url || !url.includes("tiktok.com")) {
       return NextResponse.json(
-        { error: "Vui lòng nhập đúng đường dẫn (URL) từ TikTok!" },
+        { error: "Vui lòng nhập đúng URL TikTok!" },
         { status: 400 }
       );
     }
 
-    console.log(`[Crawl Engine] Đang tiến hành cào dữ liệu link: ${url}`);
+    const response = await fetch(
+      `https://www.tikwm.com/api/?url=${encodeURIComponent(url)}`,
+      {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        cache: "no-store",
+      }
+    );
 
-    // Gọi API TikWM để trích xuất video & thông tin không dính Logo / Watermark
-    const response = await fetch(`https://www.tikwm.com/api/?url=${encodeURIComponent(url)}`, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-      },
-    });
+    if (!response.ok) {
+      return NextResponse.json(
+        { error: `TikWM HTTP ${response.status}` },
+        { status: 502 }
+      );
+    }
 
     const data = await response.json();
 
     if (data.code !== 0 || !data.data) {
       return NextResponse.json(
-        { error: "Không thể lấy dữ liệu từ link TikTok này. Vui lòng kiểm tra lại link!" },
+        { error: "Không thể lấy dữ liệu TikTok." },
         { status: 400 }
       );
     }
 
-    // Trích xuất các thông tin quan trọng
-    const videoData = {
-      title: data.data.title || "Sản phẩm TikTok", // Mô tả video
-      videoUrl: data.data.play,                    // Direct link Video HD không dính logo
-      coverImage: data.data.cover,                 // Ảnh Bìa/Thumbnail HD
-      author: data.data.author?.nickname || "KOC", // Tên tác giả
-    };
-
-    console.log("[Crawl Engine] Cào thành công:", videoData.title);
-
     return NextResponse.json({
       success: true,
-      data: videoData,
+      data: {
+        title: data.data.title || "",
+        videoUrl: data.data.play || "",
+        coverImage: data.data.cover || "",
+        author: data.data.author?.nickname || "",
+        duration: data.data.duration || null,
+        mimeType: "video/mp4",
+      },
     });
   } catch (error: any) {
-    console.error("Lỗi Crawl API:", error);
+    console.error("Crawl API error:", error);
+
     return NextResponse.json(
-      { error: "Lỗi kết nối máy chủ cào dữ liệu: " + error.message },
+      {
+        error:
+          "Lỗi kết nối máy chủ cào dữ liệu: " +
+          (error.message || "Unknown error"),
+      },
       { status: 500 }
     );
   }
