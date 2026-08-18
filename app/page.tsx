@@ -405,7 +405,6 @@ THÔNG TIN NHẬP THÊM: ${textPrompt || "Không có"}`;
         setScriptVideoUrls([...newVideoUrls]);
       }
 
-      // Tự động gộp video
       setRenderProgress("Đang kết nối gộp các phân cảnh...");
       const mergeRes = await fetch("/api/merge-video", {
         method: "POST",
@@ -416,7 +415,6 @@ THÔNG TIN NHẬP THÊM: ${textPrompt || "Không có"}`;
       const finalUrl = mergeData?.mergedVideoUrl || newVideoUrls[0];
       setMergedVideoUrl(finalUrl);
 
-      // Cập nhật số Credits thực tế
       setCredits((prev) => Math.max(0, prev - currentRequiredCredits));
       saveToHistory(finalUrl, textPrompt, script.scenes.length);
       setRenderProgress(`Hoàn thành ${newVideoUrls.length}/${script.scenes.length} phân cảnh!`);
@@ -428,7 +426,7 @@ THÔNG TIN NHẬP THÊM: ${textPrompt || "Không có"}`;
   };
 
   const handleReGenerateSingleScene = async (sceneIndex: number) => {
-    const singleSceneCost = 20; // 🌟 Trừ cố định đúng 20 Credits theo yêu cầu
+    const singleSceneCost = 20;
 
     if (!user || !user.email) {
       setShowAuthModal(true);
@@ -499,9 +497,14 @@ THÔNG TIN NHẬP THÊM: ${textPrompt || "Không có"}`;
           <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-gradient-to-tr from-purple-600 to-pink-500 flex items-center justify-center font-bold text-base sm:text-lg text-white">
             R
           </div>
-          <span className="font-bold text-base sm:text-lg bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-            Reelbo.ai
-          </span>
+          <div className="flex items-center gap-1.5">
+            <span className="font-bold text-base sm:text-lg bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+              Reelbo.ai
+            </span>
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-950/80 text-purple-300 border border-purple-800/60 font-semibold">
+              Beta v1.0.0
+            </span>
+          </div>
         </div>
 
         <div className="flex items-center gap-1.5 sm:gap-3 text-xs">
@@ -531,17 +534,17 @@ THÔNG TIN NHẬP THÊM: ${textPrompt || "Không có"}`;
             </div>
           ) : (
             <button
-              onClick={() => setShowAuthModal(true)}
-              className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-[11px] sm:text-xs px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-full shadow flex items-center gap-1 whitespace-nowrap transition"
+              onClick={handleLoginGoogle}
+              className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-[11px] sm:text-xs px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-full shadow flex items-center gap-1 whitespace-nowrap transition cursor-pointer"
             >
-              🔑 Đăng nhập
+              🔑 Đăng nhập Google
             </button>
           )}
         </div>
       </header>
 
       <div className="bg-purple-900/20 border-b border-purple-500/20 text-center py-2 text-xs text-purple-300">
-        🔥 Bản Production: Tặng đến +180 Credits khi nạp qua VietQR tự động kích hoạt 3s!
+        🔥 Ưu đãi Beta Launch: Tặng đến +180 Credits khi nạp qua VietQR tự động kích hoạt 3s!
       </div>
 
       <main className="max-w-7xl mx-auto px-4 mt-4">
@@ -635,7 +638,7 @@ THÔNG TIN NHẬP THÊM: ${textPrompt || "Không có"}`;
                       multiple
                       accept="image/*"
                       onChange={handleMultipleCharacterChange}
-                      className="w-full bg-slate-900 border border-slate-800 rounded p-1 text-[11px] text-slate-400 file:bg-purple-600 file:border-0 file:rounded file:text-white file:text-[10px] file:py-0.5 file:px-2"
+                      className="w-full bg-slate-900 border border-slate-800 rounded p-1 text-[11px] text-slate-400 file:bg-purple-600 file:border-0 file:rounded file:text-white file:text-[10px] file:py-0.5 file:px-2 cursor-pointer"
                     />
                   </div>
                 )}
@@ -658,13 +661,13 @@ THÔNG TIN NHẬP THÊM: ${textPrompt || "Không có"}`;
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <div className={`p-2 rounded-lg border ${inputType === "file" ? "bg-slate-950 border-purple-500/50" : "opacity-40 pointer-events-none"}`}>
-                    <label className="text-[10px] text-slate-400 block mb-1">🖼️ Ảnh/Video sản phẩm:</label>
-                    <input type="file" disabled={inputType !== "file"} accept="video/*,image/*" onChange={handleSampleMediaChange} className="w-full text-[11px] text-slate-400" />
+                  <div className={`p-2 rounded-lg border transition-all ${inputType === "file" ? "bg-slate-950 border-purple-500/50 shadow-inner" : "opacity-40 pointer-events-none"}`}>
+                    <label className="text-[10px] text-slate-300 font-semibold block mb-1">🖼️ Ảnh/Video sản phẩm:</label>
+                    <input type="file" disabled={inputType !== "file"} accept="video/*,image/*" onChange={handleSampleMediaChange} className="w-full text-[11px] text-slate-300 file:bg-purple-600 file:border-0 file:rounded file:text-white file:text-[10px] file:py-0.5 file:px-2 cursor-pointer" />
                   </div>
 
-                  <div className={`p-2 rounded-lg border ${inputType === "link" ? "bg-slate-950 border-purple-500/50" : "opacity-40 pointer-events-none"}`}>
-                    <label className="text-[10px] text-slate-400 block mb-1">🔗 Link TikTok/Shopee đối thủ:</label>
+                  <div className={`p-2 rounded-lg border transition-all ${inputType === "link" ? "bg-slate-950 border-purple-500/50 shadow-inner" : "opacity-40 pointer-events-none"}`}>
+                    <label className="text-[10px] text-slate-300 font-semibold block mb-1">🔗 Link TikTok/Shopee đối thủ:</label>
                     <input type="text" disabled={inputType !== "link"} value={competitorUrl} onChange={(e) => setCompetitorUrl(e.target.value)} placeholder="https://tiktok.com/@doithu/..." className="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none" />
                   </div>
                 </div>
@@ -704,7 +707,7 @@ THÔNG TIN NHẬP THÊM: ${textPrompt || "Không có"}`;
               <button
                 onClick={handleChatSubmit}
                 disabled={chatLoading || cooldown > 0}
-                className="w-full text-white font-semibold py-2.5 rounded-lg text-xs shadow-lg bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 disabled:opacity-50 transition"
+                className="w-full text-white font-semibold py-2.5 rounded-lg text-xs shadow-lg bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 disabled:opacity-50 transition cursor-pointer"
               >
                 {chatLoading ? "⏳ AI Đang Xử Lý Kịch Bản..." : cooldown > 0 ? `⏳ Đang làm mới AI... (${cooldown}s)` : script ? "🔄 Tạo Lại Kịch Bản AI" : "✨ Tạo Kịch Bản AI (Miễn phí)"}
               </button>
@@ -728,7 +731,7 @@ THÔNG TIN NHẬP THÊM: ${textPrompt || "Không có"}`;
                 <button
                   onClick={handleGenerateAllVideos}
                   disabled={scriptVideoLoading}
-                  className="w-full font-bold py-3 rounded-lg text-xs shadow-lg bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 disabled:opacity-50 text-white transition flex items-center justify-center gap-1.5"
+                  className="w-full font-bold py-3 rounded-lg text-xs shadow-lg bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 disabled:opacity-50 text-white transition flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   {scriptVideoLoading ? "🎬 Đang Render Video HD..." : `🪄 Sinh Toàn Bộ Video (-${currentRequiredCredits} Credits)`}
                 </button>
@@ -755,7 +758,7 @@ THÔNG TIN NHẬP THÊM: ${textPrompt || "Không có"}`;
                     <span className="font-bold text-purple-300">🏆 VIDEO TỔNG HOÀN CHỈNH HD</span>
                     <button
                       onClick={() => handleDownloadVideo(mergedVideoUrl)}
-                      className="bg-purple-600 hover:bg-purple-500 text-white font-bold px-3 py-1.5 rounded-lg text-[11px] flex items-center gap-1 transition shadow"
+                      className="bg-purple-600 hover:bg-purple-500 text-white font-bold px-3 py-1.5 rounded-lg text-[11px] flex items-center gap-1 transition shadow cursor-pointer"
                     >
                       📥 Tải video gộp FREE
                     </button>
@@ -767,7 +770,7 @@ THÔNG TIN NHẬP THÊM: ${textPrompt || "Không có"}`;
                   <span className="text-2xl animate-bounce">🎬</span>
                   <p className="text-slate-400 font-medium">Khung hiển thị video thành phẩm gộp HD</p>
                   <span className="text-[10px] text-slate-500">
-                    Bấm tạo kịch bản và sinh toàn bộ video ở đây
+                    bấm tạo kịch bản và sinh toàn bộ video ở đây
                   </span>
                 </div>
               )}
@@ -783,7 +786,7 @@ THÔNG TIN NHẬP THÊM: ${textPrompt || "Không có"}`;
                           <button
                             onClick={() => handleReGenerateSingleScene(idx)}
                             disabled={singleSceneLoading === idx}
-                            className="text-yellow-400 hover:text-yellow-300 text-[10px] font-medium underline flex items-center gap-1 transition"
+                            className="text-yellow-400 hover:text-yellow-300 text-[10px] font-medium underline flex items-center gap-1 transition cursor-pointer"
                           >
                             {singleSceneLoading === idx ? "⏳..." : "🔄 Tạo lại (-20 Credits)"}
                           </button>
@@ -802,7 +805,7 @@ THÔNG TIN NHẬP THÊM: ${textPrompt || "Không có"}`;
                 )}
               </div>
 
-              {/* 🌟 LỊCH SỬ VIDEO ĐÃ TẠO */}
+              {/* LỊCH SỬ VIDEO ĐÃ TẠO */}
               {historyList.length > 0 && (
                 <div className="pt-4 border-t border-slate-800/80 space-y-2">
                   <h3 className="text-xs font-bold text-slate-400 flex items-center gap-1">
@@ -871,7 +874,7 @@ THÔNG TIN NHẬP THÊM: ${textPrompt || "Không có"}`;
             <button onClick={() => setShowAuthModal(false)} className="absolute top-4 right-4 text-slate-400 hover:text-white text-lg font-bold">✕</button>
             <h3 className="text-lg font-bold text-white mb-2">Đăng Nhập Tài Khoản</h3>
             <p className="text-xs text-slate-400 mb-6">Đăng nhập bằng Google để hệ thống kích hoạt Credits tự động khi chuyển khoản.</p>
-            <button onClick={handleLoginGoogle} className="w-full py-3.5 bg-white text-slate-900 font-bold rounded-xl text-xs flex items-center justify-center gap-2 shadow">
+            <button onClick={handleLoginGoogle} className="w-full py-3.5 bg-white text-slate-900 font-bold rounded-xl text-xs flex items-center justify-center gap-2 shadow cursor-pointer">
               Tiếp tục với tài khoản Google
             </button>
           </div>
