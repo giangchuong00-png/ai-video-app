@@ -20,13 +20,22 @@ if (!serviceRoleKey) {
   throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY");
 }
 
-const supabase = createClient(supabaseUrl, serviceRoleKey, {
-  auth: {
-    persistSession: false,
-    autoRefreshToken: false,
-  },
-});
+console.log(
+  "Supabase service key loaded:",
+  serviceRoleKey.startsWith("sb_secret_")
+);
 
+const supabase = createClient(
+  supabaseUrl,
+  serviceRoleKey,
+  {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+  }
+);
+ 
 // =========================================================
 // CREDIT MAPPING
 // =========================================================
