@@ -501,9 +501,7 @@ THÔNG TIN NHẬP THÊM: ${textPrompt || "Không có"}`;
             <span className="font-bold text-base sm:text-lg bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
               Reelbo.ai
             </span>
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-950/80 text-purple-300 border border-purple-800/60 font-semibold">
-              Beta v1.0.0
-            </span>
+            
           </div>
         </div>
 
