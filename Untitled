@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cleanup-expired-videos",
+      "schedule": "0 3 * * *"
+    }
+  ]
+}
