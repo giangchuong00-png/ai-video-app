@@ -19,422 +19,215 @@ export async function POST(req: Request) {
       );
     }
 
-    const contentType =
-      req.headers.get("content-type") || "";
+    const contentType = req.headers.get("content-type") || "";
 
     let mimeType = "video/mp4";
     let originalFileName = "sample-video.mp4";
 
     // ======================================================
-    // 1. NHẬN VIDEO TỪ FILE UPLOAD HOẶC URL
+    // 1. NHẬN VIDEO AN TOÀN (CHỐNG LỖI NO NUMBER AFTER MINUS SIGN)
     // ======================================================
 
-    if (
-      contentType.includes(
-        "multipart/form-data"
-      )
-    ) {
-      const formData =
-        await req.formData();
-
-      const uploaded =
-        formData.get("file");
+    if (contentType.includes("multipart/form-data") || contentType.includes("boundary")) {
+      const formData = await req.formData();
+      const uploaded = formData.get("file");
 
       if (!(uploaded instanceof File)) {
         return NextResponse.json(
-          {
-            error:
-              "Không tìm thấy video tải lên.",
-          },
+          { error: "Không tìm thấy video tải lên." },
           { status: 400 }
         );
       }
 
-      if (
-        !uploaded.type.startsWith(
-          "video/"
-        )
-      ) {
+      if (!uploaded.type.startsWith("video/")) {
         return NextResponse.json(
-          {
-            error:
-              "File gửi lên không phải video.",
-          },
+          { error: "File gửi lên không phải video." },
           { status: 400 }
         );
       }
 
-      mimeType =
-        uploaded.type || "video/mp4";
+      mimeType = uploaded.type || "video/mp4";
+      originalFileName = uploaded.name || "uploaded-video.mp4";
 
-      originalFileName =
-        uploaded.name ||
-        "uploaded-video.mp4";
-
-      const arrayBuffer =
-        await uploaded.arrayBuffer();
-
-      const buffer =
-        Buffer.from(arrayBuffer);
+      const arrayBuffer = await uploaded.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
 
       const extension =
-        path.extname(
-          originalFileName
-        ) ||
-        (mimeType.includes(
-          "quicktime"
-        )
-          ? ".mov"
-          : ".mp4");
+        path.extname(originalFileName) ||
+        (mimeType.includes("quicktime") ? ".mov" : ".mp4");
 
       tempFilePath = path.join(
         os.tmpdir(),
         `reelbo-upload-${Date.now()}${extension}`
       );
 
-      await fs.writeFile(
-        tempFilePath,
-        buffer
-      );
+      await fs.writeFile(tempFilePath, buffer);
     } else {
-      const body = await req.json();
-
-      const videoUrl =
-        body?.videoUrl;
-
-      if (!videoUrl) {
+      let body: any = {};
+      try {
+        const text = await req.text();
+        if (text.trim().startsWith("{")) {
+          body = JSON.parse(text);
+        } else {
+          return NextResponse.json(
+            { error: "Định dạng gửi lên không hợp lệ." },
+            { status: 400 }
+          );
+        }
+      } catch {
         return NextResponse.json(
-          {
-            error:
-              "Thiếu videoUrl.",
-          },
+          { error: "Không thể đọc dữ liệu JSON gửi lên." },
           { status: 400 }
         );
       }
 
-      const videoRes =
-        await fetch(videoUrl, {
-          cache: "no-store",
-        });
+      const videoUrl = body?.videoUrl;
+
+      if (!videoUrl) {
+        return NextResponse.json(
+          { error: "Thiếu videoUrl." },
+          { status: 400 }
+        );
+      }
+
+      const videoRes = await fetch(videoUrl, { cache: "no-store" });
 
       if (!videoRes.ok) {
         return NextResponse.json(
-          {
-            error:
-              `Không tải được video mẫu: ${videoRes.status}`,
-          },
+          { error: `Không tải được video mẫu: ${videoRes.status}` },
           { status: 502 }
         );
       }
 
       mimeType =
-        videoRes.headers
-          .get("content-type")
-          ?.split(";")[0] ||
-        "video/mp4";
+        videoRes.headers.get("content-type")?.split(";")[0] || "video/mp4";
 
-      const arrayBuffer =
-        await videoRes.arrayBuffer();
-
-      const buffer =
-        Buffer.from(arrayBuffer);
+      const arrayBuffer = await videoRes.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
 
       tempFilePath = path.join(
         os.tmpdir(),
         `reelbo-url-${Date.now()}.mp4`
       );
 
-      await fs.writeFile(
-        tempFilePath,
-        buffer
-      );
+      await fs.writeFile(tempFilePath, buffer);
     }
 
     // ======================================================
     // 2. GEMINI CLIENT
     // ======================================================
 
-    const ai =
-      new GoogleGenAI({
-        apiKey,
-      });
+    const ai = new GoogleGenAI({ apiKey });
 
-    console.log(
-      "[Reelbo Analyzer] Upload video..."
-    );
+    console.log("[Reelbo Analyzer] Upload video lên Gemini...");
 
     // ======================================================
     // 3. UPLOAD VIDEO LÊN GEMINI FILES
     // ======================================================
 
-    const uploadedFile =
-      await ai.files.upload({
-        file: tempFilePath,
+    const uploadedFile = await ai.files.upload({
+      file: tempFilePath,
+      config: {
+        mimeType,
+        displayName: originalFileName,
+      },
+    });
 
-        config: {
-          mimeType,
-          displayName:
-            originalFileName,
-        },
-      });
-
-    if (
-      !uploadedFile.name ||
-      !uploadedFile.uri
-    ) {
-      throw new Error(
-        "Gemini upload video thất bại."
-      );
+    if (!uploadedFile.name || !uploadedFile.uri) {
+      throw new Error("Gemini upload video thất bại.");
     }
 
     // ======================================================
     // 4. CHỜ GEMINI PROCESS VIDEO
     // ======================================================
 
-    let processedFile =
-      uploadedFile;
+    let processedFile = uploadedFile;
 
     for (let i = 0; i < 40; i++) {
-      if (
-        processedFile.state !==
-        "PROCESSING"
-      ) {
+      if (processedFile.state !== "PROCESSING") {
         break;
       }
 
-      await new Promise(
-        (resolve) =>
-          setTimeout(
-            resolve,
-            1500
-          )
-      );
+      await new Promise((resolve) => setTimeout(resolve, 1500));
 
-      processedFile =
-        await ai.files.get({
-          name:
-            uploadedFile.name,
-        });
+      processedFile = await ai.files.get({
+        name: uploadedFile.name,
+      });
     }
 
-    if (
-      processedFile.state ===
-      "FAILED"
-    ) {
-      throw new Error(
-        "Gemini không xử lý được video mẫu."
-      );
+    if (processedFile.state === "FAILED") {
+      throw new Error("Gemini không xử lý được video mẫu.");
     }
 
-    if (
-      processedFile.state ===
-      "PROCESSING"
-    ) {
-      throw new Error(
-        "Gemini xử lý video quá lâu."
-      );
+    if (processedFile.state === "PROCESSING") {
+      throw new Error("Gemini xử lý video quá lâu.");
     }
 
     // ======================================================
-    // 5. MULTIMODAL ANALYSIS PROMPT
+    // 5. MULTIMODAL PROMPT CHI TIẾT ĐỦ 100% CẤU TRÚC GỐC
     // ======================================================
 
     const analysisPrompt = `
 Bạn là REELBO MULTIMODAL VIDEO ANALYZER.
-
 Bạn đang xem một VIDEO MẪU THẬT.
-
-Mục tiêu của bạn là bóc tách video thành dữ liệu kỹ thuật
-để một AI Director khác có thể tạo video MỚI.
-
-Bạn KHÔNG viết kịch bản mới.
-Bạn KHÔNG sáng tạo bối cảnh mới.
-Bạn chỉ PHÂN TÍCH những gì thực sự xuất hiện.
+Mục tiêu của bạn là bóc tách video thành dữ liệu kỹ thuật để một AI Director khác có thể tạo video MỚI.
+Bạn KHÔNG viết kịch bản mới. Bạn chỉ PHÂN TÍCH những gì thực sự xuất hiện.
 
 ==================================================
 1. PRODUCT IDENTITY
 ==================================================
-
 Phân tích sản phẩm thật kỹ:
-
-- loại sản phẩm
-- màu chính
-- màu phụ
-- chất liệu
-- hình dạng
-- logo/chữ
-- texture
-- độ bóng / phản chiếu
-- chi tiết nhận diện
-- kích thước tương đối
-- cách sản phẩm tương tác với tay/người
-
+- loại sản phẩm, màu chính, màu phụ, chất liệu, hình dạng, logo/chữ, texture, độ bóng / phản chiếu, chi tiết nhận diện, kích thước tương đối.
+- product_anchor_prompt: Tạo 1 câu tiếng Anh mô tả kỹ thuật bất biến về trang phục/sản phẩm (chất vải, form dáng, chi tiết cạp, khóa kéo, nếp gấp, độ dài) để đưa vào Video AI.
 Không nhìn rõ thì ghi "unknown".
 
 ==================================================
 2. CHARACTER
 ==================================================
-
-Phân tích nhân vật nhìn thấy thật:
-
-- kiểu tóc
-- trang phục
-- phụ kiện
-- tư thế
-- phần cơ thể xuất hiện trong frame
-
-Không suy đoán danh tính.
+Phân tích nhân vật: kiểu tóc, trang phục, phụ kiện, tư thế, phần cơ thể xuất hiện. Không suy đoán danh tính.
 
 ==================================================
 3. AUDIO UNDERSTANDING
 ==================================================
-
-Phân tích cả âm thanh của video.
-
-Bóc tách:
-
-- transcript
-- tốc độ nói
-- nhịp nghỉ
-- cảm xúc giọng nói
-- năng lượng
-- cách nhấn từ
-- âm thanh môi trường
-- nhạc nền
-- khoảng thời gian có lời / không lời
-
-Nếu không nghe rõ thì ghi "unknown".
+Bóc tách: transcript, tốc độ nói, nhịp nghỉ, cảm xúc, năng lượng, cách nhấn từ, âm thanh môi trường, nhạc nền, khoảng thời gian có lời / không lời.
 
 ==================================================
 4. MOTION DYNAMICS
 ==================================================
-
-Phân tích chuyển động theo mức mô tả kỹ thuật.
-
-Không cần tọa độ pixel chính xác.
-
-Bóc tách:
-
-- tốc độ chuyển động nhân vật
-- chuyển động tay
-- hướng di chuyển
-- camera pan
-- camera tilt
-- camera push-in
-- camera pull-out
-- camera orbit
-- handheld/static
-- mức phức tạp chuyển động
-- có walking/running hay không
-- sản phẩm có xoay/lắc/đưa gần camera hay không
+Tốc độ chuyển động nhân vật, chuyển động tay, hướng di chuyển, camera pan/tilt/push-in/pull-out/orbit, handheld/static, walking/running hay không.
 
 ==================================================
 5. CAMERA
 ==================================================
-
-Phân tích:
-
-- shot type
-- close-up / medium / wide
-- camera angle
-- eye-level / low-angle / high-angle
-- camera distance
-- camera height
-- camera movement
-- mức rung
-- framing
-
-Nếu tiêu cự không thể biết chính xác,
-hãy ước lượng theo LOOK:
-
-- wide-like
-- 35mm-like
-- 50mm-like
-- telephoto-like
-
-Không tuyên bố chính xác nếu không chắc.
+Shot type, camera angle, camera distance, camera height, lens look (wide-like, 35mm-like, 50mm-like), mức rung, framing.
 
 ==================================================
 6. LIGHTING
 ==================================================
-
-Phân tích:
-
-- nguồn sáng chính
-- hướng key light
-- độ mềm/cứng của ánh sáng
-- ánh sáng môi trường
-- nhiệt độ màu
-- backlight
-- window light
-- studio light
-- reflection trên sản phẩm
-- vùng highlight/shadow
+Nguồn sáng chính, hướng key light, độ mềm/cứng, nhiệt độ màu, backlight, window light, reflection trên sản phẩm, shadow style.
 
 ==================================================
 7. PACING
 ==================================================
-
-Phân tích:
-
-- nhịp dựng
-- tốc độ cắt cảnh
-- độ dài scene
-- hook nhanh hay chậm
-- scene demo dài/ngắn
-- CTA
-- khoảng nghỉ
+Nhịp dựng, tốc độ cắt cảnh, độ dài scene, hook nhanh/chậm, scene demo, CTA.
 
 ==================================================
 8. ORIGINAL VISUAL
 ==================================================
-
-Liệt kê các yếu tố video mới nên tránh sao chép:
-
-- locations
-- camera styles
-- camera movements
-- lighting styles
-- main actions
-- compositions
+Liệt kê các yếu tố cần tránh sao chép: locations, camera styles, lighting styles, main actions.
 
 ==================================================
 9. REFERENCE FRAME
 ==================================================
-
-Chọn timestamp tốt nhất để lấy sản phẩm làm reference.
-
-Ưu tiên frame:
-
-- sản phẩm rõ
-- ít motion blur
-- không bị tay che nhiều
-- đúng màu
-- đúng hình dạng
-- đủ sáng
+Chọn timestamp tốt nhất để lấy sản phẩm làm reference: rõ, không mờ, không bị che, đúng màu.
 
 ==================================================
 10. SCENE BREAKDOWN
 ==================================================
+Chia video theo thay đổi rõ ràng.
+RÀNG BUỘC TTS: Lời thoại (spoken_content) tuyệt đối không vượt quá (duration_seconds * 2.5) từ.
 
-Chia video theo thay đổi rõ ràng về:
-
-- location
-- action
-- shot
-- camera
-- lời thoại
-- sản phẩm
-- ánh sáng
-
-Không chia quá vụn.
-
-==================================================
-OUTPUT JSON
-==================================================
-
-Chỉ trả JSON hợp lệ.
-
+OUTPUT JSON FORMAT:
 {
   "product": {
     "name_guess": "",
@@ -448,9 +241,9 @@ Chỉ trả JSON hợp lệ.
     "surface_reflection": "",
     "distinctive_features": [],
     "product_visual_detail": "",
+    "product_anchor_prompt": "",
     "confidence": 0
   },
-
   "character": {
     "gender_presentation": "",
     "hair": "",
@@ -460,7 +253,6 @@ Chỉ trả JSON hợp lệ.
     "visible_accessories": [],
     "character_description": ""
   },
-
   "audio_analysis": {
     "transcript": "",
     "speech_rate": "",
@@ -471,18 +263,11 @@ Chỉ trả JSON hợp lệ.
     "background_audio": "",
     "music_present": false,
     "speech_segments": [
-      {
-        "start_time": "",
-        "end_time": "",
-        "text": ""
-      }
+      { "start_time": "", "end_time": "", "text": "" }
     ]
   },
-
   "hook": "",
-
   "sales_logic": "",
-
   "pacing": {
     "overall_speed": "",
     "cut_frequency": "",
@@ -491,7 +276,6 @@ Chỉ trả JSON hợp lệ.
     "cta_speed": "",
     "description": ""
   },
-
   "motion_analysis": {
     "subject_motion_speed": "",
     "hand_motion": "",
@@ -503,7 +287,6 @@ Chỉ trả JSON hợp lệ.
     "motion_complexity": "",
     "product_motion": ""
   },
-
   "camera_analysis": {
     "dominant_shot_types": [],
     "camera_angles": [],
@@ -513,7 +296,6 @@ Chỉ trả JSON hợp lệ.
     "handheld_or_static": "",
     "stability": ""
   },
-
   "lighting_analysis": {
     "key_light_source": "",
     "key_light_direction": "",
@@ -524,9 +306,7 @@ Chỉ trả JSON hợp lệ.
     "product_reflection": "",
     "shadow_style": ""
   },
-
   "video_summary": "",
-
   "original_visual": {
     "locations": [],
     "camera_styles": [],
@@ -535,7 +315,6 @@ Chỉ trả JSON hợp lệ.
     "main_actions": [],
     "composition_styles": []
   },
-
   "reference_frame": {
     "recommended_timestamp": "",
     "reason": "",
@@ -543,40 +322,25 @@ Chỉ trả JSON hợp lệ.
     "character_visibility": "low",
     "motion_blur": "low"
   },
-
   "scenes": [
     {
       "scene_number": 1,
       "start_time": "",
       "end_time": "",
       "duration_seconds": 0,
-
       "purpose": "",
-
       "action": "",
-
       "shot_type": "",
-
       "camera_angle": "",
-
       "camera_movement": "",
-
       "camera_motion_speed": "",
-
       "location": "",
-
       "lighting": "",
-
       "composition": "",
-
       "product_visible": true,
-
       "character_visible": true,
-
       "hand_motion": "",
-
       "body_motion": "",
-
       "spoken_content": ""
     }
   ]
@@ -584,193 +348,139 @@ Chỉ trả JSON hợp lệ.
 `;
 
     // ======================================================
-    // 6. MODEL FALLBACK
+    // 6. GỌI GEMINI MODEL
     // ======================================================
 
     const candidateModels = [
+      "gemini-3.8-flash",
       "gemini-3.7-flash",
       "gemini-3.6-flash",
       "gemini-3.5-flash",
+      "gemini-3.1-flash-lite",
     ];
 
     let responseText = "";
     let usedModel = "";
 
-    for (
-      const modelName of
-      candidateModels
-    ) {
+    for (const modelName of candidateModels) {
       try {
-        console.log(
-          `[Reelbo Analyzer] thử ${modelName}`
-        );
+        console.log(`[Reelbo Analyzer] Đang phân tích bằng ${modelName}...`);
 
-        const response =
-          await ai.models.generateContent(
+        const response = await ai.models.generateContent({
+          model: modelName,
+          contents: [
             {
-              model:
-                modelName,
-
-              contents: [
+              role: "user",
+              parts: [
                 {
-                  role: "user",
-
-                  parts: [
-                    {
-                      fileData: {
-                        fileUri:
-                          processedFile.uri!,
-
-                        mimeType:
-                          processedFile.mimeType ||
-                          mimeType,
-                      },
-                    },
-
-                    {
-                      text:
-                        analysisPrompt,
-                    },
-                  ],
+                  fileData: {
+                    fileUri: processedFile.uri!,
+                    mimeType: processedFile.mimeType || mimeType,
+                  },
+                },
+                {
+                  text: analysisPrompt,
                 },
               ],
-
-              config: {
-                responseMimeType:
-                  "application/json",
+            },
+          ],
+          config: {
+            responseMimeType: "application/json",
+          },
+        });
+        if (response.text?.trim()) {
+            responseText = response.text.trim();
+            usedModel = modelName;
+            break;
+          }
+          } catch (modelError) {
+            console.warn(
+              `[Reelbo Analyzer] ${modelName} lỗi:`,
+              modelError
+            );
+          }
+          }
+        if (!responseText) {
+            console.error(
+              "[Reelbo Analyzer] All Gemini analyzer models failed."
+            );
+          
+            return NextResponse.json(
+              {
+                success: false,
+                error:
+                  "Gemini hiện chưa phân tích được video mẫu. Vui lòng thử lại sau.",
+                code: "ANALYZER_UNAVAILABLE",
               },
-            }
-          );
-
-        if (
-          response.text?.trim()
-        ) {
-          responseText =
-            response.text.trim();
-
-          usedModel =
-            modelName;
-
-          break;
-        }
-      } catch (
-        modelError
-      ) {
-        console.warn(
-          `[Reelbo Analyzer] ${modelName} lỗi:`,
-          modelError
-        );
-      }
-    }
-
-    if (!responseText) {
-      throw new Error(
-        "Các model Gemini hiện không phản hồi."
-      );
-    }
+              {
+                status: 503,
+              }
+            );
+          }
 
     // ======================================================
-    // 7. PARSE JSON
+    // 7. PARSE JSON KẾT QUẢ
     // ======================================================
 
     let analysis: any;
 
     try {
-      analysis =
-        JSON.parse(
-          responseText
-            .replace(
-              /```json/gi,
-              ""
-            )
-            .replace(
-              /```/g,
-              ""
-            )
-            .trim()
-        );
+      analysis = JSON.parse(
+        responseText
+          .replace(/```json/gi, "")
+          .replace(/```/g, "")
+          .trim()
+      );
     } catch {
-      const jsonMatch =
-        responseText.match(
-          /\{[\s\S]*\}/
-        );
-
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
-        throw new Error(
-          "Gemini không trả JSON hợp lệ."
-        );
+        throw new Error("Gemini không trả JSON hợp lệ.");
       }
-
-      analysis =
-        JSON.parse(
-          jsonMatch[0]
-        );
+      analysis = JSON.parse(jsonMatch[0]);
     }
 
-    // ======================================================
-    // 8. BACKWARD COMPATIBILITY
-    // ======================================================
+    // Fallback nếu thiếu product_anchor_prompt
+    if (analysis?.product && !analysis.product.product_anchor_prompt) {
+      const p = analysis.product;
+      analysis.product.product_anchor_prompt = `${p.main_color || ""} ${p.material || ""} ${p.category || "clothing"}, ${p.shape || ""}`.trim();
+    }
 
-    // Page cũ của mày từng đọc transcript trực tiếp ở root,
-    // nên giữ lại field này để không phá pipeline.
-
+    // Backward compatibility
     analysis.transcript =
-      analysis?.audio_analysis
-        ?.transcript ||
+      analysis?.audio_analysis?.transcript ||
       analysis?.transcript ||
       "";
 
-    // ======================================================
-    // 9. RETURN
-    // ======================================================
+    console.log("[Reelbo Analyzer] Phân tích hoàn tất thành công.");
 
     return NextResponse.json({
-      success: true,
-
-      analysis,
-
-      meta: {
-        model:
-          usedModel,
-
-        source:
-          contentType.includes(
-            "multipart/form-data"
-          )
+        success: true,
+        data: analysis,
+        analysis,
+        product: analysis?.product,
+        meta: {
+          model: usedModel,
+          source: contentType.includes("multipart/form-data")
             ? "uploaded_file"
             : "remote_video",
-
-        multimodal_analysis:
-          true,
-      },
-    });
+          multimodal_analysis: true,
+        },
+      });
   } catch (error: any) {
-    console.error(
-      "[Reelbo Analyzer] Error:",
-      error
-    );
+    console.error("[Reelbo Analyzer] Error:", error);
 
     return NextResponse.json(
       {
         error:
           "Không thể phân tích video mẫu: " +
-          (error?.message ||
-            "Unknown error"),
+          (error?.message || "Unknown error"),
       },
-      {
-        status: 500,
-      }
+      { status: 500 }
     );
   } finally {
-    // ======================================================
-    // 10. DELETE TEMP FILE
-    // ======================================================
-
     if (tempFilePath) {
       try {
-        await fs.unlink(
-          tempFilePath
-        );
+        await fs.unlink(tempFilePath);
       } catch {}
     }
   }

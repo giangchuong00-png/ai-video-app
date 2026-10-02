@@ -1950,7 +1950,7 @@ export async function POST(
 
     const candidateModels =
       [
-        "gemini-3.7-flash",
+        "gemini-3.8-flash",
         "gemini-3.6-flash",
         "gemini-3.5-flash-lite",
       ];
@@ -2181,23 +2181,26 @@ YÊU CẦU
     // ======================================================
     // PARSE JSON
     // ======================================================
-
+    const cleanJsonText = (
+      value: string
+    ) =>
+      value
+        .replace(/```json/gi, "")
+        .replace(/```/g, "")
+        .replace(
+          /,\s*([}\]])/g,
+          "$1"
+        )
+        .trim();
     let parsedScript: any;
 
     try {
       parsedScript =
-        JSON.parse(
-          responseText
-            .replace(
-              /```json/gi,
-              ""
-            )
-            .replace(
-              /```/g,
-              ""
-            )
-            .trim()
-        );
+  JSON.parse(
+    cleanJsonText(
+      responseText
+    )
+  );
     } catch {
       const jsonMatch =
         responseText.match(
@@ -2213,9 +2216,11 @@ YÊU CẦU
       }
 
       parsedScript =
-        JSON.parse(
-          jsonMatch[0]
-        );
+  JSON.parse(
+    cleanJsonText(
+      jsonMatch[0]
+    )
+  );
     }
 
     if (

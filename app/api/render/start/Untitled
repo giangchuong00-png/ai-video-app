@@ -1,0 +1,596 @@
+import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
+import {
+  calculateCredits,
+  type VideoMode,
+} from "@/lib/pricing";
+
+export const runtime = "nodejs";
+
+// ======================================================
+// SUPABASE
+// ======================================================
+
+const supabaseUrl =
+  process.env.NEXT_PUBLIC_SUPABASE_URL;
+
+const serviceRoleKey =
+  process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+const supabase =
+  supabaseUrl && serviceRoleKey
+    ? createClient(
+        supabaseUrl,
+        serviceRoleKey,
+        {
+          auth: {
+            persistSession: false,
+            autoRefreshToken: false,
+          },
+        }
+      )
+    : null;
+
+// ======================================================
+// TYPES
+// ======================================================
+
+type AuthenticatedUser = {
+  id: string;
+  email: string;
+};
+
+type CreditRpcRow = {
+  success?: boolean;
+  remaining_credits?: number | null;
+  error_code?: string | null;
+};
+
+// ======================================================
+// AUTH
+// ======================================================
+
+async function getAuthenticatedUser(
+  req: Request
+): Promise<AuthenticatedUser> {
+  if (!supabase) {
+    throw new Error(
+      "SUPABASE_NOT_CONFIGURED"
+    );
+  }
+
+  const authorization =
+    req.headers.get(
+      "authorization"
+    );
+
+  if (
+    !authorization ||
+    !authorization.startsWith(
+      "Bearer "
+    )
+  ) {
+    throw new Error(
+      "UNAUTHORIZED"
+    );
+  }
+
+  const accessToken =
+    authorization
+      .slice(
+        "Bearer ".length
+      )
+      .trim();
+
+  if (!accessToken) {
+    throw new Error(
+      "UNAUTHORIZED"
+    );
+  }
+
+  const {
+    data,
+    error,
+  } =
+    await supabase.auth.getUser(
+      accessToken
+    );
+
+  if (
+    error ||
+    !data.user
+  ) {
+    console.warn(
+      "[Render Start Auth] Invalid token:",
+      error?.message
+    );
+
+    throw new Error(
+      "UNAUTHORIZED"
+    );
+  }
+
+  const email =
+    data.user.email
+      ?.toLowerCase()
+      .trim();
+
+  if (!email) {
+    throw new Error(
+      "USER_EMAIL_NOT_FOUND"
+    );
+  }
+
+  return {
+    id:
+      data.user.id,
+
+    email,
+  };
+}
+
+// ======================================================
+// HELPERS
+// ======================================================
+
+function normalizeVideoMode(
+  value: unknown
+): VideoMode {
+  return value ===
+    "hd_pro"
+    ? "hd_pro"
+    : "fast";
+}
+
+function normalizeTargetDuration(
+  value: unknown
+): 15 | 30 | 60 {
+  const numberValue =
+    Number(value);
+
+  if (
+    numberValue === 30
+  ) {
+    return 30;
+  }
+
+  if (
+    numberValue === 60
+  ) {
+    return 60;
+  }
+
+  return 15;
+}
+
+function normalizeSceneCount(
+  value: unknown
+) {
+  const numberValue =
+    Number(value);
+
+  if (
+    !Number.isFinite(
+      numberValue
+    )
+  ) {
+    throw new Error(
+      "INVALID_SCENE_COUNT"
+    );
+  }
+
+  const integerValue =
+    Math.floor(
+      numberValue
+    );
+
+  if (
+    integerValue <= 0 ||
+    integerValue > 30
+  ) {
+    throw new Error(
+      "INVALID_SCENE_COUNT"
+    );
+  }
+
+  return integerValue;
+}
+
+// ======================================================
+// ATOMIC CREDIT DEDUCTION
+// ======================================================
+
+async function deductCreditsAtomic(
+  userEmail: string,
+  cost: number
+) {
+  if (!supabase) {
+    throw new Error(
+      "SUPABASE_NOT_CONFIGURED"
+    );
+  }
+
+  const {
+    data,
+    error,
+  } =
+    await supabase.rpc(
+      "deduct_reelbo_credits",
+      {
+        p_email:
+          userEmail,
+
+        p_cost:
+          cost,
+      }
+    );
+
+  if (error) {
+    console.error(
+      "[Render Start Credits] RPC error:",
+      error
+    );
+
+    throw new Error(
+      "CREDIT_RPC_FAILED"
+    );
+  }
+
+  const row:
+    CreditRpcRow | null =
+    Array.isArray(data)
+      ? data[0] || null
+      : data || null;
+
+  if (!row) {
+    throw new Error(
+      "CREDIT_RESULT_EMPTY"
+    );
+  }
+
+  if (
+    row.success !==
+    true
+  ) {
+    const errorCode =
+      String(
+        row.error_code ||
+        ""
+      );
+
+    if (
+      errorCode ===
+      "INSUFFICIENT_CREDITS"
+    ) {
+      throw new Error(
+        "INSUFFICIENT_CREDITS"
+      );
+    }
+
+    if (
+      errorCode ===
+      "PROFILE_NOT_FOUND"
+    ) {
+      throw new Error(
+        "PROFILE_NOT_FOUND"
+      );
+    }
+
+    if (
+      errorCode ===
+      "INVALID_COST"
+    ) {
+      throw new Error(
+        "INVALID_COST"
+      );
+    }
+
+    throw new Error(
+      "CREDIT_DEDUCTION_FAILED"
+    );
+  }
+
+  return {
+    remainingCredits:
+      typeof row.remaining_credits ===
+      "number"
+        ? row.remaining_credits
+        : null,
+  };
+}
+
+// ======================================================
+// POST
+// ======================================================
+
+export async function POST(
+  req: Request
+) {
+  try {
+    // ==================================================
+    // 1. AUTH
+    // ==================================================
+
+    const user =
+      await getAuthenticatedUser(
+        req
+      );
+
+    // ==================================================
+    // 2. BODY
+    // ==================================================
+
+    const body =
+      await req.json();
+
+    const targetDuration =
+      normalizeTargetDuration(
+        body?.duration_seconds
+      );
+
+    const videoMode =
+      normalizeVideoMode(
+        body?.video_mode
+      );
+
+    const sceneCount =
+      normalizeSceneCount(
+        body?.scene_count
+      );
+
+    // ==================================================
+    // 3. SERVER-SIDE PRICING
+    // ==================================================
+
+    const pricing =
+      calculateCredits({
+        action:
+          "full_render",
+
+        durationSeconds:
+          targetDuration,
+
+        videoMode,
+      });
+
+    const totalCredits =
+      pricing.credits;
+
+    if (
+      !Number.isInteger(
+        totalCredits
+      ) ||
+      totalCredits <= 0
+    ) {
+      throw new Error(
+        "INVALID_SERVER_PRICE"
+      );
+    }
+
+    // ==================================================
+    // MOCK MODE
+    // ==================================================
+    //
+    // Không trừ Credit thật trong mock.
+    // Nhưng vẫn tạo render job để test flow.
+    //
+
+    const mockMode =
+      process.env
+        .VIDEO_MOCK_MODE ===
+      "true";
+
+    let remainingCredits:
+      number | null =
+      null;
+
+    if (!mockMode) {
+      // ==================================================
+      // 4. DEDUCT ONCE
+      // ==================================================
+
+      const creditResult =
+        await deductCreditsAtomic(
+          user.email,
+          totalCredits
+        );
+
+      remainingCredits =
+        creditResult
+          .remainingCredits;
+    }
+
+    // ==================================================
+    // 5. CREATE RENDER JOB
+    // ==================================================
+
+    if (!supabase) {
+      throw new Error(
+        "SUPABASE_NOT_CONFIGURED"
+      );
+    }
+
+    const {
+      data: renderJob,
+      error:
+        renderJobError,
+    } =
+      await supabase
+        .from(
+          "render_jobs"
+        )
+        .insert({
+          user_id:
+            user.id,
+
+          pricing_action:
+            "full_render",
+
+          video_mode:
+            videoMode,
+
+          duration_seconds:
+            targetDuration,
+
+          total_credits:
+            mockMode
+              ? 0
+              : totalCredits,
+
+          scene_count:
+            sceneCount,
+
+          status:
+            "active",
+        })
+        .select(
+          "id, user_id, video_mode, duration_seconds, total_credits, scene_count, status, created_at, expires_at"
+        )
+        .single();
+
+    if (
+      renderJobError ||
+      !renderJob
+    ) {
+      console.error(
+        "[Render Start] Failed creating job:",
+        renderJobError
+      );
+
+      // QUAN TRỌNG:
+      // Nếu không phải mock thì credits đã bị trừ.
+      // Hiện chưa tự refund để tránh tạo logic hoàn tiền
+      // sai trước khi mình thiết kế refund policy.
+      throw new Error(
+        "RENDER_JOB_CREATE_FAILED"
+      );
+    }
+
+    // ==================================================
+    // RESPONSE
+    // ==================================================
+
+    return NextResponse.json({
+      success:
+        true,
+
+      mock:
+        mockMode,
+
+      render_job_id:
+        renderJob.id,
+
+      pricing: {
+        credits:
+          mockMode
+            ? 0
+            : totalCredits,
+
+        listed_credits:
+          totalCredits,
+
+        pricing_version:
+          pricing.pricingVersion,
+
+        action:
+          "full_render",
+
+        video_mode:
+          videoMode,
+
+        duration_seconds:
+          targetDuration,
+      },
+
+      scene_count:
+        sceneCount,
+
+      remaining_credits:
+        remainingCredits,
+
+      expires_at:
+        renderJob.expires_at,
+    });
+  } catch (
+    error: unknown
+  ) {
+    console.error(
+      "[Render Start] Error:",
+      error
+    );
+
+    const message =
+      error instanceof Error
+        ? error.message
+        : "UNKNOWN_ERROR";
+
+    let status =
+      500;
+
+    let publicMessage =
+      "Không thể bắt đầu render.";
+
+    if (
+      message ===
+      "UNAUTHORIZED"
+    ) {
+      status = 401;
+
+      publicMessage =
+        "Phiên đăng nhập không hợp lệ hoặc đã hết hạn.";
+    }
+
+    if (
+      message ===
+      "USER_EMAIL_NOT_FOUND"
+    ) {
+      status = 401;
+
+      publicMessage =
+        "Tài khoản không có email hợp lệ.";
+    }
+
+    if (
+      message ===
+      "INSUFFICIENT_CREDITS"
+    ) {
+      status = 402;
+
+      publicMessage =
+        "Không đủ Credits.";
+    }
+
+    if (
+      message ===
+      "PROFILE_NOT_FOUND"
+    ) {
+      status = 404;
+
+      publicMessage =
+        "Không tìm thấy tài khoản.";
+    }
+
+    if (
+      message ===
+      "INVALID_SCENE_COUNT"
+    ) {
+      status = 400;
+
+      publicMessage =
+        "Số lượng phân cảnh không hợp lệ.";
+    }
+
+    return NextResponse.json(
+      {
+        error:
+          publicMessage,
+
+        code:
+          message,
+      },
+      {
+        status,
+      }
+    );
+  }
+}

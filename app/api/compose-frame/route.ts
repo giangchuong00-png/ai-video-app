@@ -414,14 +414,24 @@ export async function POST(
     const body =
       await req.json();
 
-    const {
-      scene_spec = null,
-      cinematic_spec = null,
-      product_identity = null,
-      product_image = null,
-      koc_image = null,
-      scene_number = 1,
-    } = body;
+      const {
+        scene_spec = null,
+        cinematic_spec = null,
+        product_identity = null,
+        scene_number = 1,
+      } = body;
+    
+      const product_image =
+        body.product_image ||
+        body.imageUrl ||
+        body.productImageUrl ||
+        null;
+    
+      const koc_image =
+        body.koc_image ||
+        body.kocImageUrl ||
+        body.koc_image_url ||
+        null;
 
     const mockMode =
       process.env.VIDEO_MOCK_MODE ===
@@ -537,50 +547,79 @@ export async function POST(
     );
 
     // ==================================================
-    // GEMINI IMAGE
+    // GEMINI IMAGE CHUẨN ĐA PHƯƠNG THỨC
     // ==================================================
 
-    const ai =
-      new GoogleGenAI({
+    const ai = new GoogleGenAI({
         apiKey,
       });
-
-    const interaction: any =
-      await ai.interactions.create({
-        model:
-          "gemini-3.1-flash-image",
-
-        input,
-
-        response_format: {
-          type: "image",
-          aspect_ratio: "9:16",
-          image_size: "1K",
-        },
-      });
-
-    // ==================================================
-    // GET IMAGE
-    // ==================================================
-
-    const outputImage =
-      interaction?.output_image;
-
-    if (
-      !outputImage?.data
-    ) {
-      throw new Error(
-        "Gemini Image không trả về ảnh."
+      
+      console.log(
+        `[Compose Frame] Calling Gemini Image | KOC=${!!kocInput} | Product=${!!productInput}`
       );
+      
+      let firstFrameDataUrl: string | null = null;
+      
+      try {
+        const imageResponse = await ai.models.generateContent({
+          model: "gemini-3.1-flash-image",
+      
+          // input đã được tạo phía trên:
+          // 1. prompt
+          // 2. KOC reference
+          // 3. Product reference
+          contents: input,
+      
+          config: {
+            responseModalities: ["IMAGE"],
+            imageConfig: {
+              aspectRatio: "9:16",
+              imageSize: "1K",
+            },
+          },
+        });
+      
+        const parts =
+          imageResponse.candidates?.[0]?.content?.parts ?? [];
+      
+        for (const part of parts) {
+          // Không lấy ảnh thinking/intermediate làm ảnh cuối.
+          if (part.thought) {
+            continue;
+          }
+      
+          if (part.inlineData?.data) {
+            const mimeType =
+              part.inlineData.mimeType || "image/png";
+      
+            firstFrameDataUrl =
+              `data:${mimeType};base64,${part.inlineData.data}`;
+          }
+        }
+      
+        if (!firstFrameDataUrl) {
+          throw new Error(
+            "Gemini Image không trả về ảnh first frame."
+          );
+        }
+      
+        console.log(
+          `[Compose Frame] Gemini composed first frame successfully | scene=${scene_number}`
+        );
+      } catch (imageError) {
+        console.error(
+          "[Compose Frame] Gemini Image generation failed:",
+          imageError
+        );
+      
+        throw imageError;
+      }
+
+    if (!firstFrameDataUrl) {
+      throw new Error("Không có ảnh đầu vào hợp lệ để render video.");
     }
-
-    const mimeType =
-      outputImage.mime_type ||
-      "image/jpeg";
-
-    const firstFrameDataUrl =
-      `data:${mimeType};base64,${outputImage.data}`;
-
+  
+      
     return NextResponse.json({
       success: true,
 

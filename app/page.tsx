@@ -42,6 +42,12 @@ export default function Home() {
   const [user, setUser] =
     useState<any>(null);
 
+const [totalCostUSD, setTotalCostUSD] = useState<number>(0);
+  const [sceneCosts, setSceneCosts] = useState<{ scene: number; cost: number }[]>([]);
+  const [
+    productReferenceImage,
+    setProductReferenceImage,
+  ] = useState<string | null>(null);
   const [
     showAuthModal,
     setShowAuthModal,
@@ -90,6 +96,8 @@ export default function Home() {
     useState<string | null>(
       null
     );
+
+    
 
   const [
     activeCategory,
@@ -210,7 +218,7 @@ export default function Home() {
     scriptVideoUrls,
     setScriptVideoUrls,
   ] =
-    useState<string[]>([]);
+    useState<(string | null)[]>([]);
 
   const [
     singleSceneLoading,
@@ -237,7 +245,11 @@ export default function Home() {
     renderProgress,
     setRenderProgress,
   ] = useState("");
-
+  const [
+    failedSceneIndexes,
+    setFailedSceneIndexes,
+  ] =
+    useState<number[]>([]);
   // =========================================================
   // HISTORY
   // =========================================================
@@ -249,6 +261,11 @@ export default function Home() {
     useState<
       HistoryItem[]
     >([]);
+  
+  const [
+    showHistory,
+    setShowHistory,
+  ] = useState(false);
 
   // =========================================================
   // PRICING
@@ -387,6 +404,103 @@ export default function Home() {
         "Tai nghe chống ồn không dây bass siêu trầm",
     },
   ];
+
+  // =========================================================
+  // DURATION / PRICING HELPERS
+  // =========================================================
+
+  const parseSceneDuration =
+    (
+      value: unknown
+    ): number => {
+      if (
+        typeof value ===
+        "number"
+      ) {
+        return Number.isFinite(
+          value
+        )
+          ? value
+          : 3;
+      }
+
+      if (
+        typeof value !==
+        "string"
+      ) {
+        return 3;
+      }
+
+      const match =
+        value.match(
+          /(\d+(?:\.\d+)?)/
+        );
+
+      if (!match) {
+        return 3;
+      }
+
+      const parsed =
+        Number(
+          match[1]
+        );
+
+      return Number.isFinite(
+        parsed
+      )
+        ? parsed
+        : 3;
+    };
+
+  const getTargetDurationSeconds =
+    (): 15 | 30 | 60 => {
+      if (
+        videoLength ===
+        "30s"
+      ) {
+        return 30;
+      }
+
+      if (
+        videoLength ===
+        "60s"
+      ) {
+        return 60;
+      }
+
+      return 15;
+    };
+
+  const calculateRegenerateCredits =
+    (
+      durationValue: unknown
+    ) => {
+      const duration =
+        parseSceneDuration(
+          durationValue
+        );
+
+      let base =
+        20;
+
+      if (
+        duration > 3 &&
+        duration <= 5
+      ) {
+        base = 25;
+      }
+
+      if (
+        duration > 5
+      ) {
+        base = 30;
+      }
+
+      return videoMode ===
+        "hd_pro"
+        ? base * 2
+        : base;
+    };
 
   // =========================================================
   // HISTORY SUPABASE
@@ -1011,22 +1125,10 @@ export default function Home() {
       );
 
       setScript(null);
-
-      setScriptVideoUrls(
-        []
-      );
-
-      setMergedVideoUrl(
-        null
-      );
-
-      setReferenceImageUrl(
-        null
-      );
-
-      setRenderProgress(
-        ""
-      );
+      setScriptVideoUrls([]);
+      setMergedVideoUrl(null);
+      setReferenceImageUrl(null);
+      setRenderProgress("");
 
       let crawledText =
         textPrompt;
@@ -1039,7 +1141,7 @@ export default function Home() {
         null;
 
       // =====================================================
-      // LINK TIKTOK
+      // LINK
       // =====================================================
 
       if (
@@ -1089,20 +1191,19 @@ export default function Home() {
           if (
             crawlData?.data
           ) {
-            if (
-              crawlData
-                .data
-                .coverImage
-            ) {
-              currentReferenceImage =
-                crawlData
-                  .data
-                  .coverImage;
-            }
+            const extractedCover =
+        crawlData.data.coverImage ||
+        crawlData.data.origin_cover ||
+        crawlData.data.cover ||
+        crawlData.data.dynamic_cover;
 
+      if (extractedCover) {
+        currentReferenceImage = extractedCover;
+        setReferenceImageUrl(extractedCover);
+        console.log("[Reelbo] Đã nạp ảnh mẫu váy vào state:", extractedCover);
+      }
             if (
-              crawlData
-                .data
+              crawlData.data
                 .videoUrl
             ) {
               setRenderProgress(
@@ -1142,11 +1243,6 @@ export default function Home() {
               ) {
                 videoAnalysis =
                   analyzeData.analysis;
-              } else {
-                console.warn(
-                  "Analyze link video failed:",
-                  analyzeData
-                );
               }
             }
 
@@ -1291,7 +1387,7 @@ ${textPrompt || "Không có"}
       }
 
       // =====================================================
-      // FILE UPLOAD
+      // FILE
       // =====================================================
 
       else if (
@@ -1323,8 +1419,7 @@ ${textPrompt || "Không có"}
                       e
                     ) => {
                       const result =
-                        e
-                          .target
+                        e.target
                           ?.result;
 
                       if (
@@ -1440,7 +1535,60 @@ Dùng ảnh này làm reference visual cho sản phẩm.
 
             videoAnalysis =
               analyzeData.analysis;
-
+              const recommendedTimestamp =
+              analyzeData.analysis
+                ?.reference_frame
+                ?.recommended_timestamp;
+            
+            if (
+              recommendedTimestamp &&
+              sampleMediaFile
+            ) {
+              const referenceFormData =
+                new FormData();
+            
+              referenceFormData.append(
+                "video",
+                sampleMediaFile
+              );
+            
+              referenceFormData.append(
+                "timestamp",
+                String(
+                  recommendedTimestamp
+                )
+              );
+            
+              const referenceRes =
+                await fetch(
+                  "/api/extract-reference-frame",
+                  {
+                    method: "POST",
+                    body:
+                      referenceFormData,
+                  }
+                );
+            
+              const referenceData =
+                await referenceRes.json();
+            
+              if (
+                referenceRes.ok &&
+                referenceData
+                  ?.product_reference_image
+              ) {
+                setProductReferenceImage(
+                  referenceData.product_reference_image
+                );
+                videoAnalysis =
+                  {
+                    ...videoAnalysis,
+                    product_reference_image:
+                      referenceData
+                        .product_reference_image,
+                  };
+              }
+            }
             const productName =
               videoAnalysis
                 ?.product
@@ -1590,11 +1738,6 @@ ${JSON.stringify(
 MÔ TẢ USER NHẬP THÊM:
 ${textPrompt || "Không có"}
 `;
-
-            console.log(
-              "[Reelbo] Video upload analysis:",
-              videoAnalysis
-            );
           } catch (
             err: any
           ) {
@@ -1627,10 +1770,6 @@ ${textPrompt || "Không có"}
         }
       }
 
-      // =====================================================
-      // SET REFERENCE IMAGE
-      // =====================================================
-
       if (
         currentReferenceImage
       ) {
@@ -1638,10 +1777,6 @@ ${textPrompt || "Không có"}
           currentReferenceImage
         );
       }
-
-      // =====================================================
-      // SEND TO CHAT / DIRECTOR
-      // =====================================================
 
       try {
         setRenderProgress(
@@ -1806,149 +1941,300 @@ Video mới phải đổi visual so với video mẫu.
   // =========================================================
 
   const handleGenerateAllVideos =
-    async () => {
-      if (
-        !script ||
-        !Array.isArray(
-          script.scenes
-        ) ||
+  async () => {
+    if (
+      !script ||
+      !Array.isArray(
         script.scenes
-          .length === 0
-      ) {
-        alert(
-          "Chưa có kịch bản để tạo video."
-        );
+      ) ||
+      script.scenes.length === 0
+    ) {
+      alert(
+        "Chưa có kịch bản để tạo video."
+      );
 
-        return;
-      }
+      return;
+    }
 
-      if (
-        !user ||
-        !user.email
-      ) {
-        setShowAuthModal(
-          true
-        );
-
-        return;
-      }
-
-      if (
-        credits <
-        currentRequiredCredits
-      ) {
-        setShowPaymentModal(
-          true
-        );
-
-        return;
-      }
-
-      let currentKocImageBase64:
-        string | null =
-        null;
-
-      if (
-        useConsistentCharacter &&
-        characterFiles.length >
-          0
-      ) {
-        try {
-          currentKocImageBase64 =
-            await new Promise<string>(
-              (
-                resolve,
-                reject
-              ) => {
-                const reader =
-                  new FileReader();
-
-                reader.onload =
-                  (
-                    e
-                  ) => {
-                    const result =
-                      e
-                        .target
-                        ?.result;
-
-                    if (
-                      typeof result ===
-                      "string"
-                    ) {
-                      resolve(
-                        result
-                      );
-                    } else {
-                      reject(
-                        new Error(
-                          "Không đọc được ảnh KOC."
-                        )
-                      );
-                    }
-                  };
-
-                reader.onerror =
-                  reject;
-
-                reader.readAsDataURL(
-                  characterFiles[0]
-                );
-              }
-            );
-        } catch (
-          err
-        ) {
-          console.error(
-            "Không đọc được ảnh KOC:",
-            err
-          );
-        }
-      }
-
-      setScriptVideoLoading(
+    if (
+      !user ||
+      !user.email
+    ) {
+      setShowAuthModal(
         true
       );
 
-      setScriptVideoUrls(
-        []
+      return;
+    }
+
+    if (
+      credits <
+      currentRequiredCredits
+    ) {
+      setShowPaymentModal(
+        true
       );
 
-      setMergedVideoUrl(
+      return;
+    }
+
+    const {
+      data:
+        sessionData,
+      error:
+        sessionError,
+    } =
+      await supabase.auth.getSession();
+
+    if (
+      sessionError
+    ) {
+      alert(
+        "Không lấy được phiên đăng nhập."
+      );
+
+      return;
+    }
+
+    const accessToken =
+      sessionData
+        ?.session
+        ?.access_token;
+
+    if (
+      !accessToken
+    ) {
+      setShowAuthModal(
+        true
+      );
+
+      alert(
+        "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại."
+      );
+
+      return;
+    }
+
+    // =====================================================
+    // 1. REQUEST ID
+    // =====================================================
+
+    const renderRequestId =
+      typeof crypto !==
+        "undefined" &&
+      typeof crypto.randomUUID ===
+        "function"
+        ? crypto.randomUUID()
+        : `render_${Date.now()}_${Math.random()
+            .toString(36)
+            .slice(2)}`;
+
+    // =====================================================
+    // 2. SCENE DURATION PLAN
+    // =====================================================
+
+    const sceneDurations =
+      script.scenes.map(
+        (
+          scene: any
+        ) =>
+          parseSceneDuration(
+            scene.duration ||
+              "3s"
+          )
+      );
+
+    const targetDuration =
+      getTargetDurationSeconds();
+
+    // =====================================================
+    // 3. KOC IMAGE
+    // =====================================================
+
+    let currentKocImageBase64:
+      string | null =
+      null;
+
+    if (
+      useConsistentCharacter &&
+      characterFiles.length > 0
+    ) {
+      try {
+        currentKocImageBase64 =
+          await new Promise<string>(
+            (
+              resolve,
+              reject
+            ) => {
+              const reader =
+                new FileReader();
+
+              reader.onload =
+                (
+                  e
+                ) => {
+                  const result =
+                    e.target
+                      ?.result;
+
+                  if (
+                    typeof result ===
+                    "string"
+                  ) {
+                    resolve(
+                      result
+                    );
+                  } else {
+                    reject(
+                      new Error(
+                        "Không đọc được ảnh KOC."
+                      )
+                    );
+                  }
+                };
+
+              reader.onerror =
+                reject;
+
+              reader.readAsDataURL(
+                characterFiles[0]
+              );
+            }
+          );
+      } catch (
+        err
+      ) {
+        console.error(
+          "Không đọc được ảnh KOC:",
+          err
+        );
+      }
+    }
+
+    // =====================================================
+    // 4. INITIALIZE SCENE SLOTS
+    // =====================================================
+
+    const sceneResults:
+      (string | null)[] =
+      new Array(
+        script.scenes.length
+      ).fill(
         null
       );
 
-      setRenderProgress(
-        "Bắt đầu xử lý..."
-      );
+    setScriptVideoLoading(
+      true
+    );
 
-      const newVideoUrls:
-        string[] =
-        [];
+    setScriptVideoUrls(
+      sceneResults
+    );
 
-      try {
-        for (
-          let i = 0;
-          i <
-          script.scenes
-            .length;
-          i++
-        ) {
-          const scene =
-            script.scenes[
-              i
-            ];
+    setFailedSceneIndexes(
+      []
+    );
 
-          setRenderProgress(
-            `Đang render phân cảnh ${
-              i + 1
-            }/${
-              script
-                .scenes
-                .length
-            }...`
-          );
+    setMergedVideoUrl(
+      null
+    );
 
+    setRenderProgress(
+      "Đang khởi tạo gói render..."
+    );
+
+    try {
+      // ===================================================
+      // 5. START RENDER JOB
+      // ===================================================
+
+      const startRes =
+        await fetch(
+          "/api/render/start",
+          {
+            method:
+              "POST",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+
+              Authorization:
+                `Bearer ${accessToken}`,
+            },
+
+            body:
+              JSON.stringify(
+                {
+                  render_request_id:
+                    renderRequestId,
+
+                  duration_seconds:
+                    targetDuration,
+
+                  video_mode:
+                    videoMode,
+
+                  scene_durations:
+                    sceneDurations,
+                }
+              ),
+          }
+        );
+
+      const startData =
+        await startRes.json();
+
+      if (
+        !startRes.ok ||
+        !startData
+          ?.render_job_id
+      ) {
+        throw new Error(
+          startData?.error ||
+            "Không thể khởi tạo render."
+        );
+      }
+
+      const renderJobId =
+        String(
+          startData.render_job_id
+        );
+
+      if (
+        typeof startData
+          ?.remaining_credits ===
+        "number"
+      ) {
+        setCredits(
+          startData
+            .remaining_credits
+        );
+      }
+
+      // ===================================================
+      // 6. GENERATE EACH SCENE
+      // ===================================================
+      let previousSceneLastFrame: string | null = null;
+
+      
+      for (
+        let i = 0;
+        i < Math.min(1, script.scenes.length);
+        i++
+      ) {
+        const scene =
+          script.scenes[i];
+
+        setRenderProgress(
+          `Đang render phân cảnh ${
+            i + 1
+          }/${
+            script.scenes.length
+          }...`
+        );
+
+        try {
           const res =
             await fetch(
               "/api/generate-video",
@@ -1959,11 +2245,23 @@ Video mới phải đổi visual so với video mẫu.
                 headers: {
                   "Content-Type":
                     "application/json",
+
+                  Authorization:
+                    `Bearer ${accessToken}`,
                 },
 
                 body:
                   JSON.stringify(
                     {
+                      action:
+                        "full_render",
+
+                      render_job_id:
+                        renderJobId,
+
+                      video_mode:
+                        videoMode,
+
                       visual_prompt:
                         scene.visual_prompt,
 
@@ -1975,13 +2273,15 @@ Video mới phải đổi visual so với video mẫu.
                         scene.cinematic_spec ||
                         null,
 
-                      product_identity:
+                        product_identity:
+                        script.product ||
                         script.product_identity ||
                         null,
 
                       duration:
-                        scene.duration ||
-                        "3s",
+                        sceneDurations[
+                          i
+                        ],
 
                       voiceover:
                         scene.voiceover ||
@@ -1990,35 +2290,37 @@ Video mới phải đổi visual so với video mẫu.
                       voiceType,
 
                       scene_number:
-                        scene.scene_number,
+                        i + 1,
 
-                      imageUrl:
-                        referenceImageUrl,
-
-                      kocImageUrl:
-                        currentKocImageBase64,
-
-                      hasCharacter:
-                        characterFiles.length >
-                        0,
-
-                      user_email:
-                        user.email,
-
-                      cost:
-                        Math.floor(
-                          currentRequiredCredits /
-                            script
-                              .scenes
-                              .length
-                        ),
+                        imageUrl:
+                        productReferenceImage ||
+                        referenceImageUrl ||
+                        null,
+                      
+                      product_image:
+                        productReferenceImage ||
+                        referenceImageUrl ||
+                        null,
+                        lastFrameUrl: previousSceneLastFrame,
+                        kocImageUrl: currentKocImageBase64,
+                        hasCharacter: characterFiles.length > 0,
+                      }),
                     }
-                  ),
-              }
-            );
+                  );
+  
+                  const data: any = await res.json();
 
-          const data =
-            await res.json();
+          // Đồng bộ Credits kể cả trường hợp scene bị refund.
+          if (
+            typeof data
+              ?.remaining_credits ===
+            "number"
+          ) {
+            setCredits(
+              data
+                .remaining_credits
+            );
+          }
 
           if (
             !res.ok ||
@@ -2026,56 +2328,136 @@ Video mới phải đổi visual so với video mẫu.
           ) {
             throw new Error(
               data?.error ||
-                `Không thể tạo video phân cảnh ${
+                `Không tạo được phân cảnh ${
                   i + 1
                 }.`
             );
           }
 
-          newVideoUrls.push(
-            data.video_url
+          // ===============================================
+          // SCENE SUCCESS
+          // ===============================================
+
+          sceneResults[i] =
+            data.video_url;
+            previousSceneLastFrame = data?.last_frame_url || data?.video_url || null;
+            
+            if (data?.cost_usd) {
+              setTotalCostUSD((prev: number) => Number((prev + Number(data.cost_usd)).toFixed(2)));
+              setSceneCosts((prev: any[]) => [...prev, { scene: i + 1, cost: Number(data.cost_usd) }]);
+            }
+          setScriptVideoUrls(
+            [
+              ...sceneResults,
+            ]
           );
+
+          setFailedSceneIndexes(
+            (
+              previous
+            ) =>
+              previous.filter(
+                (
+                  index
+                ) =>
+                  index !== i
+              )
+          );
+        } catch (
+          sceneError:
+            unknown
+        ) {
+          // ===============================================
+          // SCENE FAILED
+          // ===============================================
+          //
+          // KHÔNG throw ra ngoài.
+          // Giữ slot = null và chạy tiếp scene sau.
+          //
+
+          console.error(
+            `[Reelbo] Scene ${
+              i + 1
+            } failed:`,
+            sceneError
+          );
+
+          sceneResults[i] =
+            null;
 
           setScriptVideoUrls(
             [
-              ...newVideoUrls,
+              ...sceneResults,
             ]
           );
+
+          setFailedSceneIndexes(
+            (
+              previous
+            ) =>
+              previous.includes(
+                i
+              )
+                ? previous
+                : [
+                    ...previous,
+                    i,
+                  ]
+          );
         }
+      }
 
-        setCredits(
+      // ===================================================
+      // 7. FINAL RESULT
+      // ===================================================
+
+      const failedCount =
+        sceneResults.filter(
           (
-            prev
+            url
           ) =>
-            Math.max(
-              0,
-              prev -
-                currentRequiredCredits
-            )
-        );
+            !url
+        ).length;
 
-        setRenderProgress(
-          `Đã tạo xong ${newVideoUrls.length}/${script.scenes.length} phân cảnh. Hãy kiểm tra từng phân cảnh trước khi gộp.`
-        );
-      } catch (
-        err: any
+      const successCount =
+        sceneResults.length -
+        failedCount;
+
+      if (
+        failedCount === 0
       ) {
-        console.error(
-          "Generate video error:",
-          err
+        setRenderProgress(
+          `Đã tạo xong ${successCount}/${sceneResults.length} phân cảnh. Hãy kiểm tra từng phân cảnh trước khi gộp.`
         );
-
-        alert(
-          err?.message ||
-            "Lỗi trong quá trình sinh video."
-        );
-      } finally {
-        setScriptVideoLoading(
-          false
+      } else {
+        setRenderProgress(
+          `Đã tạo ${successCount}/${sceneResults.length} phân cảnh. ${failedCount} phân cảnh bị lỗi và đã được xử lý hoàn Credits nếu đủ điều kiện.`
         );
       }
-    };
+    } catch (
+      err: unknown
+    ) {
+      // Chỉ những lỗi cấp render-job mới vào đây,
+      // ví dụ không khởi tạo được job.
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Lỗi trong quá trình khởi tạo render.";
 
+      console.error(
+        "[Reelbo Full Render] Fatal error:",
+        err
+      );
+
+      alert(
+        message
+      );
+    } finally {
+      setScriptVideoLoading(
+        false
+      );
+    }
+  };
   // =========================================================
   // MANUAL MERGE VIDEO
   // =========================================================
@@ -2096,7 +2478,23 @@ Video mới phải đổi visual so với video mẫu.
 
         return;
       }
-
+      const completedVideoUrls =
+      scriptVideoUrls.filter(
+        (url): url is string =>
+          typeof url === "string" &&
+          url.length > 0
+      );
+    
+    if (
+      completedVideoUrls.length !==
+      script.scenes.length
+    ) {
+      alert(
+        "Vẫn còn phân cảnh chưa tạo thành công. Hãy tạo đủ tất cả phân cảnh trước khi gộp."
+      );
+    
+      return;
+    }
       if (
         scriptVideoUrls.length !==
         script.scenes.length
@@ -2125,10 +2523,6 @@ Video mới phải đổi visual so với video mẫu.
       );
 
       try {
-        // =====================================================
-        // GET CURRENT SUPABASE SESSION
-        // =====================================================
-
         const {
           data: sessionData,
           error: sessionError,
@@ -2160,10 +2554,6 @@ Video mới phải đổi visual so với video mẫu.
           );
         }
 
-        // =====================================================
-        // BUILD SCENES
-        // =====================================================
-
         const scenesForMerge =
           script.scenes.map(
             (
@@ -2185,10 +2575,6 @@ Video mới phải đổi visual so với video mẫu.
             })
           );
 
-        // =====================================================
-        // MERGE
-        // =====================================================
-
         const mergeRes =
           await fetch(
             "/api/merge-video",
@@ -2207,8 +2593,8 @@ Video mới phải đổi visual so với video mẫu.
               body:
                 JSON.stringify(
                   {
-                    videoUrls:
-                      scriptVideoUrls,
+                    videoUrls: 
+                      completedVideoUrls,
 
                     scenes:
                       scenesForMerge,
@@ -2243,10 +2629,6 @@ Video mới phải đổi visual so với video mẫu.
         setMergedVideoUrl(
           finalUrl
         );
-
-        // =====================================================
-        // REFRESH HISTORY FROM SUPABASE
-        // =====================================================
 
         if (
           mergeData
@@ -2287,254 +2669,403 @@ Video mới phải đổi visual so với video mẫu.
       }
     };
 
-  // =========================================================
-  // REGENERATE ONE SCENE
-  // =========================================================
+// =========================================================
+// REGENERATE ONE SCENE
+// =========================================================
 
-  const handleReGenerateSingleScene =
-    async (
-      sceneIndex: number
-    ) => {
-      const singleSceneCost =
-        20;
-
-      if (
-        !user ||
-        !user.email
-      ) {
-        setShowAuthModal(
-          true
-        );
-
-        return;
-      }
-
-      if (
-        !script?.scenes?.[
-          sceneIndex
-        ]
-      ) {
-        alert(
-          "Không tìm thấy phân cảnh."
-        );
-
-        return;
-      }
-
-      if (
-        credits <
-        singleSceneCost
-      ) {
-        setShowPaymentModal(
-          true
-        );
-
-        return;
-      }
-
-      setSingleSceneLoading(
-        sceneIndex
+const handleReGenerateSingleScene =
+  async (
+    sceneIndex: number
+  ) => {
+    if (
+      !user ||
+      !user.email
+    ) {
+      setShowAuthModal(
+        true
       );
 
-      let currentKocImageBase64:
-        string | null =
-        null;
+      return;
+    }
 
-      if (
-        useConsistentCharacter &&
-        characterFiles.length >
-          0
-      ) {
-        try {
-          currentKocImageBase64 =
-            await new Promise<string>(
-              (
-                resolve,
-                reject
-              ) => {
-                const reader =
-                  new FileReader();
+    const scene =
+      script?.scenes?.[
+        sceneIndex
+      ];
 
-                reader.onload =
-                  (
-                    e
-                  ) => {
-                    const result =
-                      e
-                        .target
-                        ?.result;
+    if (!scene) {
+      alert(
+        "Không tìm thấy phân cảnh."
+      );
 
-                    if (
-                      typeof result ===
-                      "string"
-                    ) {
-                      resolve(
-                        result
-                      );
-                    } else {
-                      reject(
-                        new Error(
-                          "Không đọc được ảnh KOC."
-                        )
-                      );
-                    }
-                  };
+      return;
+    }
 
-                reader.onerror =
-                  reject;
+    // =====================================================
+    // 1. PRICE CHECK
+    // =====================================================
 
-                reader.readAsDataURL(
-                  characterFiles[0]
-                );
-              }
-            );
-        } catch (
-          err
-        ) {
-          console.error(
-            "Không đọc được ảnh KOC khi tạo lại scene:",
-            err
-          );
-        }
-      }
+    const expectedRegenerateCredits =
+      calculateRegenerateCredits(
+        scene.duration ||
+          "3s"
+      );
 
+    if (
+      credits <
+      expectedRegenerateCredits
+    ) {
+      setShowPaymentModal(
+        true
+      );
+
+      return;
+    }
+
+    // =====================================================
+    // 2. AUTH
+    // =====================================================
+
+    const {
+      data:
+        sessionData,
+      error:
+        sessionError,
+    } =
+      await supabase.auth.getSession();
+
+    if (
+      sessionError
+    ) {
+      alert(
+        "Không lấy được phiên đăng nhập."
+      );
+
+      return;
+    }
+
+    const accessToken =
+      sessionData
+        ?.session
+        ?.access_token;
+
+    if (
+      !accessToken
+    ) {
+      setShowAuthModal(
+        true
+      );
+
+      alert(
+        "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại."
+      );
+
+      return;
+    }
+
+    // =====================================================
+    // 3. UNIQUE GENERATION REQUEST
+    // =====================================================
+
+    const generationRequestId =
+      typeof crypto !==
+        "undefined" &&
+      typeof crypto.randomUUID ===
+        "function"
+        ? crypto.randomUUID()
+        : `regen_${Date.now()}_${Math.random()
+            .toString(36)
+            .slice(2)}`;
+
+    setSingleSceneLoading(
+      sceneIndex
+    );
+
+    // =====================================================
+    // 4. KOC IMAGE
+    // =====================================================
+
+    let currentKocImageBase64:
+      string | null =
+      null;
+
+    if (
+      useConsistentCharacter &&
+      characterFiles.length >
+        0
+    ) {
       try {
-        const scene =
-          script.scenes[
-            sceneIndex
-          ];
+        currentKocImageBase64 =
+          await new Promise<string>(
+            (
+              resolve,
+              reject
+            ) => {
+              const reader =
+                new FileReader();
 
-        const res =
-          await fetch(
-            "/api/generate-video",
-            {
-              method:
-                "POST",
+              reader.onload =
+                (
+                  e
+                ) => {
+                  const result =
+                    e.target
+                      ?.result;
 
-              headers: {
-                "Content-Type":
-                  "application/json",
-              },
-
-              body:
-                JSON.stringify(
-                  {
-                    visual_prompt:
-                      `${
-                        scene.visual_prompt ||
-                        ""
-                      } ` +
-                      `(Create a fresh visual variation. Keep the same product and character identity. ` +
-                      `Use a different safe camera composition or a clearly different environment. ` +
-                      `Avoid unnecessary full-body walking.)`,
-
-                    scene_spec:
-                      scene.scene_spec ||
-                      null,
-
-                    cinematic_spec:
-                      scene.cinematic_spec ||
-                      null,
-
-                    product_identity:
-                      script.product_identity ||
-                      null,
-
-                    duration:
-                      scene.duration ||
-                      "3s",
-
-                    voiceover:
-                      scene.voiceover ||
-                      "",
-
-                    voiceType,
-
-                    scene_number:
-                      scene.scene_number,
-
-                    imageUrl:
-                      referenceImageUrl,
-
-                    kocImageUrl:
-                      currentKocImageBase64,
-
-                    hasCharacter:
-                      characterFiles.length >
-                      0,
-
-                    user_email:
-                      user.email,
-
-                    cost:
-                      singleSceneCost,
+                  if (
+                    typeof result ===
+                    "string"
+                  ) {
+                    resolve(
+                      result
+                    );
+                  } else {
+                    reject(
+                      new Error(
+                        "Không đọc được ảnh KOC."
+                      )
+                    );
                   }
-                ),
+                };
+
+              reader.onerror =
+                reject;
+
+              reader.readAsDataURL(
+                characterFiles[0]
+              );
             }
           );
-
-        const data =
-          await res.json();
-
-        if (
-          !res.ok ||
-          !data?.video_url
-        ) {
-          throw new Error(
-            data?.error ||
-              "Lỗi tạo lại phân cảnh."
-          );
-        }
-
-        const updatedUrls =
-          [
-            ...scriptVideoUrls,
-          ];
-
-        updatedUrls[
-          sceneIndex
-        ] =
-          data.video_url;
-
-        setScriptVideoUrls(
-          updatedUrls
-        );
-
-        setMergedVideoUrl(
-          null
-        );
-
-        setCredits(
-          (
-            prev
-          ) =>
-            Math.max(
-              0,
-              prev -
-                singleSceneCost
-            )
-        );
-
-        setRenderProgress(
-          `Đã tạo lại phân cảnh ${
-            sceneIndex +
-            1
-          }. Hãy kiểm tra lại trước khi gộp video.`
-        );
       } catch (
-        err: any
+        err
       ) {
-        alert(
-          err?.message ||
-            "Lỗi khi tạo lại phân cảnh này."
-        );
-      } finally {
-        setSingleSceneLoading(
-          null
+        console.error(
+          "Không đọc được ảnh KOC khi tạo scene:",
+          err
         );
       }
-    };
+    }
 
+    try {
+      // ===================================================
+      // 5. GENERATE
+      // ===================================================
+
+      const res =
+        await fetch(
+          "/api/generate-video",
+          {
+            method:
+              "POST",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+
+              Authorization:
+                `Bearer ${accessToken}`,
+            },
+
+            body:
+              JSON.stringify(
+                {
+                  action:
+                    "regenerate",
+
+                  generation_request_id:
+                    generationRequestId,
+
+                  video_mode:
+                    videoMode,
+
+                  visual_prompt:
+                    `${
+                      scene.visual_prompt ||
+                      ""
+                    } ` +
+                    `(Create a fresh visual variation. Keep the same product and character identity. ` +
+                    `Use a different safe camera composition or a clearly different environment. ` +
+                    `Avoid unnecessary full-body walking.)`,
+
+                  scene_spec:
+                    scene.scene_spec ||
+                    null,
+
+                  cinematic_spec:
+                    scene.cinematic_spec ||
+                    null,
+
+                  product_identity:
+                    script.product_identity ||
+                    null,
+
+                  duration:
+                    scene.duration ||
+                    "3s",
+
+                  voiceover:
+                    scene.voiceover ||
+                    "",
+
+                  voiceType,
+
+                  scene_number:
+                    scene.scene_number ||
+                    sceneIndex +
+                      1,
+
+                  imageUrl:
+                    referenceImageUrl,
+                    product_image: productReferenceImage || referenceImageUrl || null,
+                  kocImageUrl:
+                    currentKocImageBase64,
+
+                  hasCharacter:
+                    characterFiles.length >
+                    0,
+                }
+              ),
+          }
+        );
+
+      const data =
+        await res.json();
+
+      // ===================================================
+      // 6. SYNC CREDITS
+      // ===================================================
+      //
+      // Thành công:
+      // backend trả balance sau charge.
+      //
+      // Thất bại:
+      // backend refund và trả balance sau refund.
+      //
+
+      if (
+        typeof data
+          ?.remaining_credits ===
+        "number"
+      ) {
+        setCredits(
+          data.remaining_credits
+        );
+      }
+
+      if (
+        !res.ok ||
+        !data?.video_url
+      ) {
+        throw new Error(
+          data?.error ||
+            "Lỗi tạo phân cảnh."
+        );
+      }
+
+      // ===================================================
+      // 7. SUCCESS — REPLACE EXACT SLOT
+      // ===================================================
+
+      setScriptVideoUrls(
+        (
+          previous
+        ) => {
+          const updated =
+            [
+              ...previous,
+            ];
+
+          // Đảm bảo array đủ số slot.
+          while (
+            updated.length <
+            script.scenes.length
+          ) {
+            updated.push(
+              null
+            );
+          }
+
+          updated[
+            sceneIndex
+          ] =
+            data.video_url;
+
+          return updated;
+        }
+      );
+
+      // Scene này không còn failed.
+      setFailedSceneIndexes(
+        (
+          previous
+        ) =>
+          previous.filter(
+            (
+              index
+            ) =>
+              index !==
+              sceneIndex
+          )
+      );
+
+      // Vì một scene vừa thay đổi,
+      // video merged cũ không còn hợp lệ.
+      setMergedVideoUrl(
+        null
+      );
+
+      setRenderProgress(
+        `Đã tạo ${
+          scriptVideoUrls[
+            sceneIndex
+          ]
+            ? "lại"
+            : "thành công"
+        } phân cảnh ${
+          sceneIndex +
+          1
+        }. Hãy kiểm tra trước khi gộp video.`
+      );
+    } catch (
+      err: unknown
+    ) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Lỗi khi tạo phân cảnh.";
+
+      console.error(
+        `[Reelbo Regenerate] Scene ${
+          sceneIndex +
+          1
+        } failed:`,
+        err
+      );
+
+      // Nếu scene vốn đã null thì giữ nó trong danh sách failed.
+      setFailedSceneIndexes(
+        (
+          previous
+        ) =>
+          previous.includes(
+            sceneIndex
+          )
+            ? previous
+            : [
+                ...previous,
+                sceneIndex,
+              ]
+      );
+
+      alert(
+        message
+      );
+    } finally {
+      setSingleSceneLoading(
+        null
+      );
+    }
+  };
   // =========================================================
   // UI
   // =========================================================
@@ -2542,97 +3073,129 @@ Video mới phải đổi visual so với video mẫu.
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans pb-10">
 
-      {/* =====================================================
-          HEADER
-      ===================================================== */}
-
+      {/* HEADER HOÀN CHỈNH ĐÃ CHUẨN HÓA CÚ PHÁP */}
       <header className="border-b border-slate-800 bg-slate-900/90 backdrop-blur px-3 sm:px-6 py-2.5 flex items-center justify-between sticky top-0 z-50">
-
         <div className="flex items-center space-x-2">
-
           <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-gradient-to-tr from-purple-600 to-pink-500 flex items-center justify-center font-bold text-base sm:text-lg text-white">
             R
           </div>
-
-          <div className="flex items-center gap-1.5">
-
-            <span className="font-bold text-base sm:text-lg bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-              Reelbo.ai
-            </span>
-
-          </div>
-
+          <span className="font-bold text-base sm:text-lg bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+            Reelbo.ai
+          </span>
         </div>
 
         <div className="flex items-center gap-1.5 sm:gap-3 text-xs">
+          {/* NÚT LỊCH SỬ KÈM DROPDOWN */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShowHistory((prev) => !prev)}
+              className="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 px-2.5 py-1 rounded-full flex items-center gap-1 text-[11px] font-medium transition cursor-pointer"
+            >
+              <span>🕒</span>
+              <span>Lịch sử</span>
+              {historyList.length > 0 && (
+                <span className="bg-purple-600 text-white text-[9px] px-1.5 py-0.2 rounded-full font-bold ml-0.5">
+                  {historyList.length}
+                </span>
+              )}
+            </button>
 
+            {showHistory && (
+              <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-3 z-50">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-800 mb-2">
+                  <span className="font-bold text-xs text-slate-200">
+                    🕒 Video gần nhất (72 giờ)
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowHistory(false)}
+                    className="text-slate-400 hover:text-white text-xs px-1"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {historyList.length === 0 ? (
+                  <div className="py-6 text-center text-xs text-slate-500">
+                    Chưa có video nào được lưu trong lịch sử.
+                  </div>
+                ) : (
+                  <div className="flex gap-2.5 overflow-x-auto pb-2">
+                    {historyList.map((item) => (
+                      <div
+                        key={item.id}
+                        className="flex-shrink-0 w-32 bg-slate-950 border border-slate-800 p-1.5 rounded-lg"
+                      >
+                        <video
+                          src={item.videoUrl}
+                          controls
+                          preload="metadata"
+                          className="w-full h-20 object-cover rounded bg-black"
+                        />
+                        <div className="text-[9px] text-slate-400 mt-1 truncate">
+                          {item.createdAt}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleDownloadVideo(item.videoUrl)}
+                          className="text-purple-400 hover:text-purple-300 text-[10px] font-bold mt-0.5 block"
+                        >
+                          Tải xuống
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Ô CREDITS VÀ NẠP */}
           <div className="bg-slate-800 border border-yellow-500/30 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full flex items-center gap-1">
-
             <span className="text-yellow-400 font-bold text-[11px] sm:text-xs">
               {credits} Credits
             </span>
-
             <button
-              onClick={() =>
-                setShowPaymentModal(
-                  true
-                )
-              }
-              className="bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-400 hover:to-amber-400 text-slate-950 text-[9px] sm:text-[10px] font-bold px-1.5 py-0.5 rounded-full transition shadow"
+              type="button"
+              onClick={() => setShowPaymentModal(true)}
+              className="bg-gradient-to-r from-yellow-500 to-amber-500 text-slate-950 text-[9px] sm:text-[10px] font-bold px-1.5 py-0.5 rounded-full"
             >
               + Nạp
             </button>
-
           </div>
 
+          {/* Ô TÀI KHOẢN HOẶC LOGIN */}
           {user ? (
             <div className="flex items-center gap-1.5 bg-slate-800 border border-slate-700 px-2 py-1 rounded-full">
-
               <span className="text-[10px] sm:text-[11px] text-purple-300 font-medium max-w-[70px] sm:max-w-[120px] truncate">
                 {user.email}
               </span>
-
               <button
-                onClick={
-                  handleLogout
-                }
-                className="text-[9px] bg-slate-700 hover:bg-slate-600 text-slate-200 px-1.5 py-0.5 rounded-full transition"
+                type="button"
+                onClick={handleLogout}
+                className="text-[9px] bg-slate-700 text-slate-200 px-1.5 py-0.5 rounded-full"
               >
                 Thoát
               </button>
-
             </div>
           ) : (
             <button
-              onClick={
-                handleLoginGoogle
-              }
-              className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-[11px] sm:text-xs px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-full shadow flex items-center gap-1 whitespace-nowrap transition cursor-pointer"
+              type="button"
+              onClick={handleLoginGoogle}
+              className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold text-[11px] sm:text-xs px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-full"
             >
               🔑 Đăng nhập Google
             </button>
           )}
-
         </div>
-
       </header>
 
-      {/* BETA BAR */}
-
       <div className="bg-purple-900/20 border-b border-purple-500/20 text-center py-2 text-xs text-purple-300">
-
-        🔥 Ưu đãi Beta Launch:
-        Tặng đến +180 Credits khi
-        nạp qua VietQR tự động kích
-        hoạt 3s!
-
+        🔥 Ưu đãi Beta Launch: Tặng đến +180 Credits khi nạp qua VietQR tự động kích hoạt 3s!
       </div>
 
       <main className="max-w-7xl mx-auto px-4 mt-4">
-
-        {/* =================================================
-            CATEGORY
-        ================================================= */}
 
         <div className="flex items-center gap-2 overflow-x-auto pb-3 text-xs">
 
@@ -2653,11 +3216,11 @@ Video mới phải đổi visual so với video mẫu.
                     cat.prompt
                   )
                 }
-                className={`px-3 py-1 rounded-full whitespace-nowrap transition font-medium border ${
+                className={`px-3 py-1 rounded-full whitespace-nowrap border ${
                   activeCategory ===
                   idx
-                    ? "bg-purple-600 border-purple-400 text-white shadow-lg shadow-purple-900/40"
-                    : "bg-slate-900 border-slate-800 text-slate-300 hover:border-purple-500 hover:bg-purple-600/20"
+                    ? "bg-purple-600 border-purple-400 text-white"
+                    : "bg-slate-900 border-slate-800 text-slate-300"
                 }`}
               >
                 {cat.name}
@@ -2669,15 +3232,9 @@ Video mới phải đổi visual so với video mẫu.
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mt-2">
 
-          {/* =================================================
-              LEFT COLUMN
-          ================================================= */}
-
           <div className="lg:col-span-5 space-y-4">
 
-            {/* MODE */}
-
-            <div className="grid grid-cols-2 gap-2.5">
+            <div className="grid grid-cols-1 gap-2.5">
 
               <button
                 onClick={() =>
@@ -2685,71 +3242,56 @@ Video mới phải đổi visual so với video mẫu.
                     "creative"
                   )
                 }
-                className={`p-3.5 rounded-xl border text-left transition-all duration-300 relative ${
+                className={`p-3.5 rounded-xl border text-left ${
                   creativeMode ===
                   "creative"
-                    ? "bg-purple-950/60 border-purple-500 text-white shadow-lg shadow-purple-900/30 -translate-y-0.5"
-                    : "bg-slate-900/80 border-slate-800 text-slate-400 hover:border-slate-700"
+                    ? "bg-purple-950/60 border-purple-500"
+                    : "bg-slate-900/80 border-slate-800"
                 }`}
               >
-
-                <div className="font-bold text-xs text-purple-300 flex items-center gap-1.5 mb-1">
-                  🔮 AI Sáng Tạo Bối
-                  Cảnh Mới
+                <div className="font-bold text-xs text-purple-300">
+                  🔮 AI Sáng Tạo Bối Cảnh Mới
                 </div>
 
-                <p className="text-[10px] text-slate-400 leading-relaxed">
-                  Bóc sản phẩm & tự
-                  động đổi bối cảnh
-                  phòng/studio, góc
-                  quay điện ảnh 35mm.
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Bóc sản phẩm & tự động đổi bối cảnh, góc quay mới.
                 </p>
-
               </button>
 
-              <button
-                onClick={() =>
-                  setCreativeMode(
-                    "clone"
-                  )
-                }
-                className={`p-3.5 rounded-xl border text-left transition-all duration-300 relative ${
-                  creativeMode ===
-                  "clone"
-                    ? "bg-emerald-950/60 border-emerald-500 text-white shadow-lg shadow-emerald-900/30 -translate-y-0.5"
-                    : "bg-slate-900/80 border-slate-800 text-slate-400 hover:border-slate-700"
-                }`}
-              >
+              {false && (
+  <button
+    onClick={() =>
+      setCreativeMode(
+        "clone"
+      )
+    }
+    className={`p-3.5 rounded-xl border text-left ${
+      creativeMode ===
+      "clone"
+        ? "bg-emerald-950/60 border-emerald-500"
+        : "bg-slate-900/80 border-slate-800"
+    }`}
+  >
+    <div className="font-bold text-xs text-emerald-300">
+      ⚡ AI Nhái Chuyển Động
+    </div>
 
-                <div className="font-bold text-xs text-emerald-300 flex items-center gap-1.5 mb-1">
-                  ⚡ AI Nhái Chuyển
-                  Động
-                </div>
-
-                <p className="text-[10px] text-slate-400 leading-relaxed">
-                  Giữ chuyển động tham
-                  khảo và dùng nhân vật
-                  KOC cố định.
-                </p>
-
-              </button>
+    <p className="text-[10px] text-slate-400 mt-1">
+      Giữ chuyển động tham khảo và dùng nhân vật KOC cố định.
+    </p>
+  </button>
+)}
 
             </div>
 
-            {/* CONTROL CARD */}
-
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3.5 shadow-xl">
-
-              {/* KOC */}
+            <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3.5">
 
               <div className="p-3 rounded-lg border bg-slate-950 border-purple-500/30 space-y-2">
 
                 <div className="flex justify-between items-center">
 
                   <label className="text-xs font-bold text-purple-300">
-                    👤 1. Ảnh Nhân Vật
-                    KOC Cố Định
-                    (Bán thân/Chân dung):
+                    👤 1. Ảnh Nhân Vật KOC Cố Định
                   </label>
 
                   <input
@@ -2784,9 +3326,8 @@ Video mới phải đổi visual so với video mẫu.
                               key={
                                 idx
                               }
-                              className="relative group flex-shrink-0"
+                              className="relative flex-shrink-0"
                             >
-
                               <img
                                 src={
                                   preview
@@ -2805,11 +3346,10 @@ Video mới phải đổi visual so với video mẫu.
                                     idx
                                   )
                                 }
-                                className="absolute -top-1 -right-1 bg-red-600 text-white rounded-full w-4 h-4 flex items-center justify-center text-[9px] font-bold"
+                                className="absolute -top-1 -right-1 bg-red-600 text-white rounded-full w-4 h-4 text-[9px]"
                               >
                                 ✕
                               </button>
-
                             </div>
                           )
                         )}
@@ -2817,22 +3357,69 @@ Video mới phải đổi visual so với video mẫu.
                       </div>
                     )}
 
-                    <input
-                      type="file"
-                      multiple
-                      accept="image/*"
-                      onChange={
-                        handleMultipleCharacterChange
-                      }
-                      className="w-full bg-slate-900 border border-slate-800 rounded p-1 text-[11px] text-slate-400 file:bg-purple-600 file:border-0 file:rounded file:text-white file:text-[10px] file:py-0.5 file:px-2 cursor-pointer"
-                    />
+<label className="flex items-center justify-center gap-2 w-full py-2 px-3 rounded-lg border border-dashed border-purple-500/70 bg-purple-950/40 hover:bg-purple-900/60 text-purple-200 text-xs font-semibold cursor-pointer transition shadow-md">
+                      <span>📁 Chọn ảnh KOC (Tối đa 10 ảnh)</span>
+                      <input
+                        type="file"
+                        multiple
+                        accept="image/*"
+                        onChange={handleMultipleCharacterChange}
+                        className="hidden"
+                      />
+                    </label>
 
                   </div>
                 )}
 
               </div>
 
-              {/* SOURCE */}
+              {/* Ô chọn ảnh sản phẩm cố định */}
+<div className="mb-4 p-3 rounded-lg border border-dashed border-purple-500/40 bg-purple-950/20">
+  <div className="flex items-center justify-between mb-2">
+    <label className="text-xs font-semibold text-purple-200">
+      👗 1.1. Ảnh Sản Phẩm Mẫu (Bắt buộc để giữ đúng váy)
+    </label>
+    {productReferenceImage && (
+      <button
+        type="button"
+        onClick={() => setProductReferenceImage(null)}
+        className="text-[11px] text-red-400 hover:underline"
+      >
+        Xóa ảnh
+      </button>
+    )}
+  </div>
+
+  {!productReferenceImage ? (
+    <label className="flex items-center justify-center gap-2 w-full py-2 px-3 rounded border border-gray-700 bg-gray-800/60 hover:bg-gray-800 cursor-pointer text-xs text-gray-300">
+      <span>📷 Tải ảnh váy / sản phẩm nét (PNG, JPG)</span>
+      <input
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+              setProductReferenceImage(reader.result as string);
+            };
+            reader.readAsDataURL(file);
+          }
+        }}
+      />
+    </label>
+  ) : (
+    <div className="flex items-center gap-3">
+      <img
+        src={productReferenceImage}
+        alt="Sản phẩm"
+        className="w-12 h-12 object-cover rounded border border-purple-400"
+      />
+      <span className="text-xs text-green-400">✓ Đã nạp ảnh sản phẩm cố định</span>
+    </div>
+  )}
+</div>
 
               <div className="space-y-2">
 
@@ -2842,14 +3429,11 @@ Video mới phải đổi visual so với video mẫu.
                     🎬 2. Nguồn mẫu:
                   </span>
 
-                  <div className="flex items-center gap-3 text-xs bg-slate-950 px-2 py-1 rounded-lg border border-slate-800">
+                  <div className="flex items-center gap-3 text-xs">
 
-                    <label className="flex items-center gap-1 cursor-pointer">
-
+                    <label className="flex items-center gap-1">
                       <input
                         type="radio"
-                        name="inputType"
-                        value="file"
                         checked={
                           inputType ===
                           "file"
@@ -2859,28 +3443,13 @@ Video mới phải đổi visual so với video mẫu.
                             "file"
                           )
                         }
-                        className="accent-purple-500"
                       />
-
-                      <span
-                        className={
-                          inputType ===
-                          "file"
-                            ? "text-white font-semibold"
-                            : "text-slate-400"
-                        }
-                      >
-                        📂 Tải File
-                      </span>
-
+                      📂 Tải File
                     </label>
 
-                    <label className="flex items-center gap-1 cursor-pointer">
-
+                    <label className="flex items-center gap-1">
                       <input
                         type="radio"
-                        name="inputType"
-                        value="link"
                         checked={
                           inputType ===
                           "link"
@@ -2890,204 +3459,101 @@ Video mới phải đổi visual so với video mẫu.
                             "link"
                           )
                         }
-                        className="accent-purple-500"
                       />
-
-                      <span
-                        className={
-                          inputType ===
-                          "link"
-                            ? "text-white font-semibold"
-                            : "text-slate-400"
-                        }
-                      >
-                        🔗 Dán Link
-                      </span>
-
+                      🔗 Dán Link
                     </label>
 
                   </div>
 
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-
-                  <div
-                    className={`p-2 rounded-lg border transition-all ${
-                      inputType ===
-                      "file"
-                        ? "bg-slate-950 border-purple-500/50 shadow-inner"
-                        : "opacity-40 pointer-events-none"
-                    }`}
-                  >
-
-                    <label className="text-[10px] text-slate-300 font-semibold block mb-1">
-                      🖼️ Ảnh/Video sản
-                      phẩm:
-                    </label>
-
+                {inputType === "file" ? (
+                  <label className="flex items-center justify-center gap-2 w-full py-2.5 px-3 rounded-lg border border-dashed border-purple-500 bg-purple-950/50 hover:bg-purple-900/70 text-purple-200 text-xs font-semibold cursor-pointer transition shadow-md">
+                    <span>🎬 {sampleMediaFile ? sampleMediaFile.name : "Nhấp để tải lên Video / Ảnh sản phẩm mẫu"}</span>
                     <input
                       type="file"
-                      disabled={
-                        inputType !==
-                        "file"
-                      }
                       accept="video/*,image/*"
-                      onChange={
-                        handleSampleMediaChange
-                      }
-                      className="w-full text-[11px] text-slate-300 file:bg-purple-600 file:border-0 file:rounded file:text-white file:text-[10px] file:py-0.5 file:px-2 cursor-pointer"
+                      onChange={handleSampleMediaChange}
+                      className="hidden"
                     />
-
-                    {sampleMediaFile &&
-                      inputType ===
-                        "file" && (
-                        <p className="text-[9px] text-emerald-400 mt-1 truncate">
-                          ✓{" "}
-                          {
-                            sampleMediaFile.name
-                          }
-                        </p>
-                      )}
-
-                  </div>
-
-                  <div
-                    className={`p-2 rounded-lg border transition-all ${
-                      inputType ===
-                      "link"
-                        ? "bg-slate-950 border-purple-500/50 shadow-inner"
-                        : "opacity-40 pointer-events-none"
-                    }`}
-                  >
-
-                    <label className="text-[10px] text-slate-300 font-semibold block mb-1">
-                      🔗 Link TikTok/Shopee
-                      đối thủ:
-                    </label>
-
-                    <input
-                      type="text"
-                      disabled={
-                        inputType !==
-                        "link"
-                      }
-                      value={
-                        competitorUrl
-                      }
-                      onChange={(e) =>
-                        setCompetitorUrl(
-                          e.target
-                            .value
-                        )
-                      }
-                      placeholder="https://tiktok.com/@doithu/..."
-                      className="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none"
-                    />
-
-                  </div>
-
-                </div>
-
+                  </label>
+                ) : (
+                  <input
+                    type="text"
+                    value={competitorUrl}
+                    onChange={(e) =>
+                      setCompetitorUrl(
+                        e.target.value
+                      )
+                    }
+                    placeholder="https://tiktok.com/..."
+                    className="w-full bg-slate-950 border border-slate-800 focus:border-purple-500 rounded-lg p-2.5 text-xs text-slate-200 outline-none transition"
+                  />
+                )}
               </div>
 
-              {/* PRODUCT DESCRIPTION */}
-
-              <div>
-
-                <label className="text-xs text-slate-400 block mb-1">
-                  Mô tả sản phẩm
-                  (tùy chọn):
-                </label>
-
-                <textarea
-                  value={
-                    textPrompt
-                  }
-                  onChange={(e) =>
-                    setTextPrompt(
-                      e.target.value
-                    )
-                  }
-                  placeholder="Nhập tên sản phẩm, ưu điểm nổi bật..."
-                  className="w-full h-16 bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-xs text-slate-200 focus:outline-none focus:border-purple-500"
-                />
-
-              </div>
-
-              {/* OPTIONS */}
+              <textarea
+                value={
+                  textPrompt
+                }
+                onChange={(e) =>
+                  setTextPrompt(
+                    e.target.value
+                  )
+                }
+                placeholder="Mô tả sản phẩm..."
+                className="w-full h-16 bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-xs"
+              />
 
               <div className="grid grid-cols-2 gap-2">
 
-                <div>
+                <select
+                  value={
+                    videoLength
+                  }
+                  onChange={(e) =>
+                    setVideoLength(
+                      e.target.value
+                    )
+                  }
+                  className="bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs"
+                >
+                  <option value="15s">
+                    15s
+                  </option>
 
-                  <label className="text-[10px] text-slate-400 block mb-1">
-                    ⏱️ Thời lượng:
-                  </label>
+                  <option value="30s">
+                    30s
+                  </option>
 
-                  <select
-                    value={
-                      videoLength
-                    }
-                    onChange={(e) =>
-                      setVideoLength(
-                        e.target
-                          .value
-                      )
-                    }
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-1.5 text-xs text-slate-200"
-                  >
+                  <option value="60s">
+                    60s
+                  </option>
+                </select>
 
-                    <option value="15s">
-                      ⚡ 15s (60 Credits)
-                    </option>
+                <select
+                  value={
+                    voiceType
+                  }
+                  onChange={(e) =>
+                    setVoiceType(
+                      e.target.value
+                    )
+                  }
+                  className="bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs"
+                >
+                  <option value="nu_bac">
+                    Nữ Miền Bắc
+                  </option>
 
-                    <option value="30s">
-                      🔥 30s (100 Credits)
-                    </option>
+                  <option value="nam_nam">
+                    Nam Miền Nam
+                  </option>
 
-                    <option value="60s">
-                      🎬 60s (180 Credits)
-                    </option>
-
-                  </select>
-
-                </div>
-
-                <div>
-
-                  <label className="text-[10px] text-slate-400 block mb-1">
-                    🎙️ Giọng đọc:
-                  </label>
-
-                  <select
-                    value={
-                      voiceType
-                    }
-                    onChange={(e) =>
-                      setVoiceType(
-                        e.target
-                          .value
-                      )
-                    }
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-1.5 text-xs text-slate-200"
-                  >
-
-                    <option value="nu_bac">
-                      🗣️ Nữ Miền Bắc
-                    </option>
-
-                    <option value="nam_nam">
-                      🗣️ Nam Miền Nam
-                    </option>
-
-                    <option value="nu_nam">
-                      🗣️ Nữ Miền Nam
-                    </option>
-
-                  </select>
-
-                </div>
+                  <option value="nu_nam">
+                    Nữ Miền Nam
+                  </option>
+                </select>
 
               </div>
 
@@ -3099,39 +3565,26 @@ Video mới phải đổi visual so với video mẫu.
                   chatLoading ||
                   cooldown > 0
                 }
-                className="w-full text-white font-semibold py-2.5 rounded-lg text-xs shadow-lg bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 disabled:opacity-50 transition cursor-pointer"
+                className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white font-semibold py-2.5 rounded-lg text-xs disabled:opacity-50"
               >
-
                 {chatLoading
                   ? renderProgress ||
-                    "⏳ AI Đang Xử Lý Kịch Bản..."
-                  : cooldown >
-                    0
-                  ? `⏳ Đang làm mới AI... (${cooldown}s)`
+                    "AI Đang Xử Lý..."
                   : script
                   ? "🔄 Tạo Lại Kịch Bản AI"
-                  : "✨ Tạo Kịch Bản AI (Miễn phí)"}
-
+                  : "✨ Tạo Kịch Bản AI"}
               </button>
 
             </div>
 
-            {/* SCRIPT */}
-
             {script && (
-              <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3 shadow-xl">
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3">
 
                 <h3 className="font-semibold text-xs text-purple-300">
-                  📜 Kịch Bản Chi
-                  Tiết (
-                  {
-                    script.scenes
-                      ?.length
-                  }{" "}
-                  phân cảnh)
+                  📜 Kịch Bản Chi Tiết
                 </h3>
 
-                <div className="max-h-48 overflow-y-auto space-y-2 pr-1 text-xs">
+                <div className="max-h-48 overflow-y-auto space-y-2 text-xs">
 
                   {script.scenes?.map(
                     (
@@ -3142,10 +3595,9 @@ Video mới phải đổi visual so với video mẫu.
                         key={
                           idx
                         }
-                        className="bg-slate-950 p-2.5 rounded-lg border border-slate-800/80"
+                        className="bg-slate-950 p-2.5 rounded-lg border border-slate-800"
                       >
-
-                        <p className="font-bold text-purple-400 mb-0.5">
+                        <p className="font-bold text-purple-400">
                           Phân cảnh{" "}
                           {
                             scene.scene_number
@@ -3157,26 +3609,19 @@ Video mới phải đổi visual so với video mẫu.
                           )
                         </p>
 
-                        <p className="text-slate-300 mb-0.5">
-                          <strong>
-                            Hình ảnh:
-                          </strong>{" "}
+                        <p className="text-slate-300">
                           {
                             scene.visual_prompt_vi
                           }
                         </p>
 
                         <p className="text-slate-400 italic">
-                          <strong>
-                            Lời thoại:
-                          </strong>{" "}
                           "
                           {
                             scene.voiceover
                           }
                           "
                         </p>
-
                       </div>
                     )
                   )}
@@ -3190,13 +3635,11 @@ Video mới phải đổi visual so với video mẫu.
                   disabled={
                     scriptVideoLoading
                   }
-                  className="w-full font-bold py-3 rounded-lg text-xs shadow-lg bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 disabled:opacity-50 text-white transition flex items-center justify-center gap-1.5 cursor-pointer"
+                  className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold py-3 rounded-lg text-xs disabled:opacity-50"
                 >
-
                   {scriptVideoLoading
-                    ? "🎬 Đang Render Video HD..."
+                    ? "🎬 Đang Render..."
                     : `🪄 Sinh Toàn Bộ Video (-${currentRequiredCredits} Credits)`}
-
                 </button>
 
               </div>
@@ -3204,310 +3647,218 @@ Video mới phải đổi visual so với video mẫu.
 
           </div>
 
-          {/* =================================================
-              RIGHT COLUMN
-          ================================================= */}
-
           <div className="lg:col-span-7 space-y-4">
-
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-4 shadow-xl min-h-[480px]">
-
+            <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-4 min-h-[480px]">
+              {/* HEADER STUDIO */}
               <div className="flex items-center justify-between">
-
-                <h2 className="font-semibold text-purple-400 text-sm">
+                <h2 className="font-semibold text-purple-400 text-sm flex items-center gap-2">
                   🎬 Kết Quả Video Studio
                 </h2>
 
-                {(scriptVideoLoading ||
-                  mergeVideoLoading) && (
-                  <span className="text-xs text-yellow-400 font-medium animate-pulse">
-
-                    ⚡{" "}
-                    {renderProgress ||
-                      "Đang xử lý..."}
-
-                  </span>
-                )}
-
+                {/* Nút Gộp Video chỉ sáng khi TẤT CẢ các cảnh đã render thành công */}
+                {script &&
+                  scriptVideoUrls.length === script.scenes?.length &&
+                  scriptVideoUrls.every((u) => Boolean(u)) &&
+                  !mergedVideoUrl && (
+                    <button
+                      onClick={handleMergeVideo}
+                      disabled={mergeVideoLoading}
+                      className="bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold px-3 py-1.5 rounded-lg text-xs hover:opacity-90 transition disabled:opacity-50"
+                    >
+                      {mergeVideoLoading ? "⏳ Đang Gộp Video..." : "✨ Gộp Video Hoàn Chỉnh"}
+                    </button>
+                  )}
               </div>
 
+              {/* 1. KHUNG PLAYER CHÍNH (Đúng chuẩn khung lớn ảnh 2) */}
               {mergedVideoUrl ? (
-                <div className="bg-slate-950 border border-purple-500/30 p-3 rounded-xl space-y-2">
-
-                  <div className="flex justify-between items-center text-xs mb-1">
-
-                    <span className="font-bold text-purple-300">
-                      🏆 VIDEO TỔNG
-                      HOÀN CHỈNH HD
+                <div className="bg-slate-950 border border-purple-500/40 p-3 rounded-xl space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="font-bold text-purple-300 text-xs">
+                      🏆 VIDEO TỔNG HOÀN CHỈNH HD
                     </span>
-
                     <button
-                      onClick={() =>
-                        handleDownloadVideo(
-                          mergedVideoUrl
-                        )
-                      }
-                      className="bg-purple-600 hover:bg-purple-500 text-white font-bold px-3 py-1.5 rounded-lg text-[11px] flex items-center gap-1 transition shadow cursor-pointer"
+                      onClick={() => handleDownloadVideo(mergedVideoUrl)}
+                      className="bg-purple-600 hover:bg-purple-500 text-white px-3 py-1.5 rounded-lg text-[11px] font-medium transition"
                     >
-                      📥 Tải video gộp
-                      FREE
+                      📥 Tải video
                     </button>
-
                   </div>
-
                   <video
-                    src={
-                      mergedVideoUrl
-                    }
+                    src={mergedVideoUrl}
                     controls
                     autoPlay
-                    className="w-full h-56 object-cover rounded-lg bg-black shadow"
+                    className="w-full h-64 object-cover rounded-lg bg-black"
                   />
-
-                </div>
-              ) : scriptVideoUrls.length >
-                0 ? (
-                <div className="bg-slate-950 border border-purple-500/30 p-4 rounded-xl space-y-3">
-
-                  <div className="text-center space-y-1">
-
-                    <p className="text-xs font-bold text-purple-300">
-                      👀 Hãy kiểm tra từng phân cảnh trước khi gộp
-                    </p>
-
-                    <p className="text-[10px] text-slate-400">
-                      Nếu có cảnh chưa ưng,
-                      hãy bấm “Tạo lại” ở
-                      cảnh đó trước khi tạo
-                      video hoàn chỉnh.
-                    </p>
-
-                  </div>
-
-                  <button
-                    onClick={
-                      handleMergeVideo
-                    }
-                    disabled={
-                      mergeVideoLoading ||
-                      scriptVideoUrls.length !==
-                        script?.scenes
-                          ?.length
-                    }
-                    className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 disabled:opacity-50 text-white font-bold py-2.5 rounded-lg text-xs shadow-lg transition cursor-pointer"
-                  >
-                    {mergeVideoLoading
-                      ? "⏳ Đang Gộp Video..."
-                      : "🎬 Gộp Video Hoàn Chỉnh"}
-                  </button>
-
                 </div>
               ) : (
-                <div className="border border-dashed border-slate-800/80 rounded-xl h-40 flex flex-col items-center justify-center text-xs text-slate-500 space-y-2">
-
-                  <span className="text-2xl animate-bounce">
-                    🎬
-                  </span>
-
-                  <p className="text-slate-400 font-medium">
-                    Khung hiển thị video
-                    thành phẩm gộp HD
-                  </p>
-
-                  <span className="text-[10px] text-slate-500">
-                    Bấm tạo kịch bản và
-                    sinh toàn bộ video ở
-                    đây
-                  </span>
-
+                <div className="border border-dashed border-slate-800 rounded-xl h-52 flex flex-col items-center justify-center p-6 text-center bg-slate-950/50">
+                  {mergeVideoLoading ? (
+                    <div className="flex flex-col items-center gap-2 text-purple-400">
+                      <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+                      <p className="text-xs font-medium text-slate-300">Đang ghép nối và hoàn thiện video cuối cùng...</p>
+                    </div>
+                  ) : scriptVideoLoading ? (
+                    <div className="flex flex-col items-center gap-2 text-purple-400">
+                      <div className="w-8 h-8 border-2 border-pink-500 border-t-transparent rounded-full animate-spin" />
+                      <p className="text-xs font-semibold text-slate-200">
+                        {renderProgress || "Đang render các phân cảnh..."}
+                      </p>
+                      <span className="text-[11px] text-slate-500">Video thành phẩm sẽ sẵn sàng gộp sau khi hoàn tất các cảnh</span>
+                    </div>
+                  ) : (
+                    <div className="space-y-1">
+                      <div className="text-2xl mb-1">🎬</div>
+                      <p className="font-medium text-xs text-slate-300">Khung hiển thị video thành phẩm gộp HD</p>
+                      <p className="text-[11px] text-slate-500">Bấm tạo kịch bản và sinh toàn bộ video ở đây</p>
+                    </div>
+                  )}
                 </div>
               )}
 
-              {/* SCENES */}
+              {/* 2. KHU VỰC CHI TIẾT TỪNG PHÂN CẢNH */}
+              {scriptVideoUrls.length === 0 ? (
+                /* Trạng thái rỗng ban đầu y hệt ảnh 2 */
+                <div className="border border-slate-800/60 rounded-xl bg-slate-950/40 p-8 text-center">
+                  <p className="text-xs text-slate-500">
+                    Các phân cảnh video riêng lẻ sẽ tự động hiển thị ở đây sau khi bạn bấm "Sinh Toàn Bộ Video".
+                  </p>
+                </div>
+              ) : (
+                /* Grid hiển thị trạng thái từng cảnh rõ ràng, loại bỏ báo lỗi giả */
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {scriptVideoUrls.map((url, idx) => {
+                    const scene = script?.scenes?.[idx];
+                    const regenerateCredits = calculateRegenerateCredits(scene?.duration || "3s");
+                    const isFailed = failedSceneIndexes.includes(idx);
+                    const isRenderingThisScene =
+                      singleSceneLoading === idx ||
+                      (scriptVideoLoading && !url && !isFailed);
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-
-                {scriptVideoUrls.length >
-                0 ? (
-                  scriptVideoUrls.map(
-                    (
-                      url,
-                      idx
-                    ) => (
+                    return (
                       <div
-                        key={
-                          `${url}-${idx}`
-                        }
-                        className="bg-slate-950 border border-slate-800 p-2.5 rounded-xl space-y-2"
+                        key={`${url ?? "scene"}-${idx}`}
+                        className="bg-slate-950 border border-slate-800 p-2.5 rounded-xl flex flex-col justify-between"
                       >
-
-                        <div className="flex justify-between items-center text-[11px]">
-
-                          <span className="font-semibold text-purple-300">
-                            Phân cảnh{" "}
-                            {idx +
-                              1}
+                        {/* Header của từng thẻ cảnh */}
+                        <div className="flex justify-between items-center text-[11px] mb-2">
+                          <span
+                            className={
+                              url
+                                ? "text-purple-300 font-semibold"
+                                : isFailed
+                                ? "text-red-400 font-semibold"
+                                : "text-slate-400"
+                            }
+                          >
+                            Phân cảnh {idx + 1}
+                            {url && " • Sẵn sàng"}
+                            {isRenderingThisScene && " • Đang tạo..."}
+                            {isFailed && " • Lỗi"}
                           </span>
 
-                          <div className="flex items-center gap-2">
-
-                            <button
-                              onClick={() =>
-                                handleReGenerateSingleScene(
-                                  idx
-                                )
-                              }
-                              disabled={
-                                singleSceneLoading ===
-                                idx
-                              }
-                              className="text-yellow-400 hover:text-yellow-300 text-[10px] font-medium underline flex items-center gap-1 transition cursor-pointer disabled:opacity-50"
-                            >
-
-                              {singleSceneLoading ===
-                              idx
-                                ? "⏳ Đang tạo lại..."
-                                : "🔄 Tạo lại (-20 Credits)"}
-
-                            </button>
-
-                            <button
-                              onClick={() =>
-                                handleDownloadVideo(
-                                  url
-                                )
-                              }
-                              className="text-purple-400 hover:underline text-[10px]"
-                            >
-                              Tải về
-                            </button>
-
-                          </div>
-
+                          <button
+                            onClick={() => handleReGenerateSingleScene(idx)}
+                            disabled={singleSceneLoading === idx || scriptVideoLoading}
+                            className="text-yellow-400 text-[10px] hover:underline disabled:opacity-50"
+                          >
+                            {singleSceneLoading === idx
+                              ? "Đang tạo..."
+                              : url
+                              ? `🔄 Tạo lại (-${regenerateCredits} Cr)`
+                              : `🎬 Tạo cảnh này (-${regenerateCredits} Cr)`}
+                          </button>
                         </div>
 
-                        <video
-                          src={
-                            url
-                          }
-                          controls
-                          className="w-full h-32 object-cover rounded-lg bg-black"
-                        />
-
-                      </div>
-                    )
-                  )
-                ) : (
-                  <div className="col-span-full py-6 text-center text-xs text-slate-500 italic">
-
-                    Các phân cảnh video
-                    riêng lẻ sẽ tự động
-                    hiển thị ở đây sau
-                    khi bạn bấm "Sinh
-                    Toàn Bộ Video".
-
-                  </div>
-                )}
-
-              </div>
-
-              {/* =================================================
-                  HISTORY SUPABASE
-              ================================================= */}
-
-              {historyList.length >
-                0 && (
-                <div className="pt-4 border-t border-slate-800/80 space-y-2">
-
-                  <h3 className="text-xs font-bold text-slate-400 flex items-center gap-1">
-
-                    🕒 Video của bạn trong
-                    72 giờ gần nhất (
-                    {
-                      historyList.length
-                    }
-                    ):
-
-                  </h3>
-
-                  <div className="flex items-center gap-3 overflow-x-auto pb-2">
-
-                    {historyList.map(
-                      (
-                        item
-                      ) => (
-                        <div
-                          key={
-                            item.id
-                          }
-                          className="flex-shrink-0 w-36 bg-slate-950 border border-slate-800 p-1.5 rounded-lg space-y-1"
-                        >
-
+                        {/* Nội dung cảnh: Đã có video / Đang chạy / Bị lỗi thật */}
+                        {url ? (
                           <video
-                            src={
-                              item.videoUrl
-                            }
+                            src={url}
                             controls
-                            preload="metadata"
-                            className="w-full h-20 object-cover rounded bg-black"
+                            className="w-full h-32 object-cover rounded-lg bg-black"
                           />
-
-                          <div className="text-[9px] text-slate-400 truncate">
-
-                            {
-                              item.createdAt
-                            }
-
+                        ) : isRenderingThisScene ? (
+                          <div className="w-full h-32 rounded-lg bg-slate-900/60 border border-slate-800 flex flex-col items-center justify-center gap-2 px-3 text-center">
+                            <div className="w-5 h-5 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
+                            <div className="text-[11px] text-purple-300 font-medium">
+                              Đang render cảnh {idx + 1}...
+                            </div>
+                            <div className="text-[10px] text-slate-500">AI đang xử lý hình ảnh và chuyển động</div>
                           </div>
-
-                          <div className="flex items-center justify-between text-[9px]">
-
-                            <span className="text-slate-500">
-
-                              {item.durationSeconds
-                                ? `${item.durationSeconds}s`
-                                : ""}
-
-                            </span>
-
+                        ) : isFailed ? (
+                          /* Chỉ hiện card cảnh báo đỏ khi thực sự lỗi và đã ghi nhận vào failedSceneIndexes */
+                          <div className="w-full h-32 rounded-lg bg-red-950/20 border border-red-500/30 flex flex-col items-center justify-center gap-1.5 text-center px-3">
+                            <div className="text-red-400 text-[11px] font-bold">⚠️ Phân cảnh chưa tạo được</div>
+                            <div className="text-slate-400 text-[9px] leading-tight">
+                              Credits của lần tạo trước đã được hoàn tự động vào tài khoản.
+                            </div>
                             <button
-                              onClick={() =>
-                                handleDownloadVideo(
-                                  item.videoUrl
-                                )
-                              }
-                              className="text-purple-400 font-bold hover:underline"
+                              onClick={() => handleReGenerateSingleScene(idx)}
+                              disabled={singleSceneLoading === idx}
+                              className="mt-1 bg-red-900/50 hover:bg-red-800/80 border border-red-700/50 text-white text-[9px] px-2 py-1 rounded"
                             >
-                              Tải
+                              Thử tạo lại cảnh này
                             </button>
-
                           </div>
-
-                        </div>
-                      )
-                    )}
-
-                  </div>
-
+                        ) : (
+                          /* Trạng thái chờ trong hàng đợi */
+                          <div className="w-full h-32 rounded-lg bg-slate-900/30 border border-dashed border-slate-800 flex items-center justify-center text-slate-600 text-[11px]">
+                            Đang chờ đến lượt...
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
 
-            </div>
+              {/* LỊCH SỬ VIDEO */}
+              
 
+              {showHistory && historyList.length > 0 && (
+                <div className="pt-4 border-t border-slate-800 space-y-2">
+                  <h3 className="text-xs font-bold text-slate-400">
+                    🕒 Video của bạn trong 72 giờ gần nhất
+                  </h3>
+
+                  <div className="flex gap-3 overflow-x-auto pb-2">
+                    {historyList.map((item) => (
+                      <div
+                        key={item.id}
+                        className="flex-shrink-0 w-36 bg-slate-950 border border-slate-800 p-1.5 rounded-lg"
+                      >
+                        <video
+                          src={item.videoUrl}
+                          controls
+                          preload="metadata"
+                          className="w-full h-20 object-cover rounded bg-black"
+                        />
+                        <div className="text-[9px] text-slate-400 mt-1">{item.createdAt}</div>
+                        <button
+                          onClick={() => handleDownloadVideo(item.videoUrl)}
+                          className="text-purple-400 text-[9px] font-bold"
+                        >
+                          Tải
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
+
 
         </div>
 
       </main>
 
-      {/* =====================================================
-          PAYMENT MODAL
-      ===================================================== */}
+      {/* PAYMENT MODAL */}
 
       {showPaymentModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50">
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50">
 
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 max-w-lg w-full text-center relative space-y-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 max-w-lg w-full space-y-4 relative">
 
             <button
               onClick={() =>
@@ -3515,69 +3866,50 @@ Video mới phải đổi visual so với video mẫu.
                   false
                 )
               }
-              className="absolute top-3 right-4 text-slate-400 hover:text-white text-xl font-bold"
+              className="absolute top-3 right-4"
             >
               ✕
             </button>
 
             <h3 className="text-lg font-bold text-purple-400">
-              Nạp Credits Render
-              Video AI HD
+              Nạp Credits
             </h3>
 
-            <div className="grid grid-cols-2 p-1 bg-slate-950 border border-slate-800 rounded-xl text-xs font-semibold">
+            <div className="grid grid-cols-2 gap-2">
 
               <button
-                onClick={() => {
+                onClick={() =>
                   setPaymentTab(
                     "one_time"
-                  );
-
-                  setSelectedPlanAmount(
-                    100000
-                  );
-                }}
-                className={`py-2 rounded-lg ${
-                  paymentTab ===
-                  "one_time"
-                    ? "bg-purple-600 text-white"
-                    : "text-slate-400"
-                }`}
+                  )
+                }
+                className="bg-slate-800 p-2 rounded"
               >
-                💳 Nạp Lẻ Credits
+                Nạp lẻ
               </button>
 
               <button
-                onClick={() => {
+                onClick={() =>
                   setPaymentTab(
                     "subscription"
-                  );
-
-                  setSelectedPlanAmount(
-                    499000
-                  );
-                }}
-                className={`py-2 rounded-lg ${
-                  paymentTab ===
-                  "subscription"
-                    ? "bg-purple-600 text-white"
-                    : "text-slate-400"
-                }`}
+                  )
+                }
+                className="bg-slate-800 p-2 rounded"
               >
-                👑 Gói Đăng Ký Tháng
+                Gói tháng
               </button>
 
             </div>
 
             {paymentTab ===
             "one_time" ? (
-              <div className="grid grid-cols-2 gap-2.5 text-left">
+              <div className="grid grid-cols-2 gap-2">
 
                 {topupPlans.map(
                   (
                     plan
                   ) => (
-                    <div
+                    <button
                       key={
                         plan.amount
                       }
@@ -3586,88 +3918,56 @@ Video mới phải đổi visual so với video mẫu.
                           plan.amount
                         )
                       }
-                      className={`p-3 rounded-xl border cursor-pointer ${
-                        selectedPlanAmount ===
-                        plan.amount
-                          ? "bg-purple-950/60 border-purple-500"
-                          : "bg-slate-950 border-slate-800 text-slate-400"
-                      }`}
+                      className="bg-slate-950 border border-slate-800 p-3 rounded-xl text-left"
                     >
-
-                      <p className="font-bold text-xs text-white">
+                      <div className="font-bold">
                         {
                           plan.credits
                         }{" "}
                         Credits
-                      </p>
+                      </div>
 
-                      <span className="font-bold text-emerald-400 text-xs block mt-1">
-
+                      <div className="text-emerald-400">
                         {plan.amount.toLocaleString(
                           "vi-VN"
                         )}
-                        đ{" "}
-
-                        <span className="text-[9px] text-amber-400 font-normal">
-                          (
-                          {
-                            plan.bonus
-                          }
-                          )
-                        </span>
-
-                      </span>
-
-                    </div>
+                        đ
+                      </div>
+                    </button>
                   )
                 )}
 
               </div>
             ) : (
-              <div className="space-y-2 text-left">
+              <div className="space-y-2">
 
                 {subscriptionPlans.map(
                   (
-                    sub
+                    plan
                   ) => (
-                    <div
+                    <button
                       key={
-                        sub.amount
+                        plan.amount
                       }
                       onClick={() =>
                         setSelectedPlanAmount(
-                          sub.amount
+                          plan.amount
                         )
                       }
-                      className={`p-3 rounded-xl border cursor-pointer flex items-center justify-between ${
-                        selectedPlanAmount ===
-                        sub.amount
-                          ? "bg-purple-950/60 border-purple-500"
-                          : "bg-slate-950 border-slate-800 text-slate-400"
-                      }`}
+                      className="w-full bg-slate-950 border border-slate-800 p-3 rounded-xl flex justify-between"
                     >
-
-                      <p className="font-bold text-xs text-white">
-
-                        Gói{" "}
+                      <span>
                         {
-                          sub.name
-                        }{" "}
-                        (
-                        {sub.credits.toLocaleString(
-                          "vi-VN"
-                        )}{" "}
-                        Credits)
-
-                      </p>
-
-                      <span className="font-bold text-emerald-400 text-sm">
-                        {
-                          sub.label
+                          plan.name
                         }
                       </span>
 
-                    </div>
+                      <span className="text-emerald-400">
+                        {
+                          plan.label
+                        }
+                      </span>
+                    </button>
                   )
                 )}
 
@@ -3678,17 +3978,9 @@ Video mới phải đổi visual so với video mẫu.
               onClick={
                 handlePaymentClick
               }
-              className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold py-2.5 rounded-xl text-xs shadow-lg"
+              className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold py-2.5 rounded-xl"
             >
-
-              💳 Thanh Toán VietQR (
-              {(selectedPlanAmount ||
-                0
-              ).toLocaleString(
-                "vi-VN"
-              )}{" "}
-              VNĐ)
-
+              💳 Thanh Toán VietQR
             </button>
 
           </div>
@@ -3696,14 +3988,12 @@ Video mới phải đổi visual so với video mẫu.
         </div>
       )}
 
-      {/* =====================================================
-          AUTH MODAL
-      ===================================================== */}
+      {/* AUTH MODAL */}
 
       {showAuthModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
 
-          <div className="bg-slate-900 border border-slate-700 w-full max-w-sm p-6 rounded-2xl shadow-2xl relative text-center">
+          <div className="bg-slate-900 border border-slate-700 w-full max-w-sm p-6 rounded-2xl relative text-center">
 
             <button
               onClick={() =>
@@ -3711,7 +4001,7 @@ Video mới phải đổi visual so với video mẫu.
                   false
                 )
               }
-              className="absolute top-4 right-4 text-slate-400 hover:text-white text-lg font-bold"
+              className="absolute top-4 right-4"
             >
               ✕
             </button>
@@ -3721,19 +4011,16 @@ Video mới phải đổi visual so với video mẫu.
             </h3>
 
             <p className="text-xs text-slate-400 mb-6">
-              Đăng nhập bằng Google để
-              hệ thống kích hoạt Credits
-              tự động khi chuyển khoản.
+              Đăng nhập bằng Google để sử dụng Credits.
             </p>
 
             <button
               onClick={
                 handleLoginGoogle
               }
-              className="w-full py-3.5 bg-white text-slate-900 font-bold rounded-xl text-xs flex items-center justify-center gap-2 shadow cursor-pointer"
+              className="w-full py-3.5 bg-white text-slate-900 font-bold rounded-xl text-xs"
             >
-              Tiếp tục với tài khoản
-              Google
+              Tiếp tục với Google
             </button>
 
           </div>
@@ -3741,6 +4028,32 @@ Video mới phải đổi visual so với video mẫu.
         </div>
       )}
 
+{/* Bảng ngầm theo dõi chi phí USD Replicate */}
+<div style={{
+        position: 'fixed',
+        bottom: '16px',
+        right: '16px',
+        background: 'rgba(15, 23, 42, 0.95)',
+        color: '#22c55e',
+        border: '1px solid #334155',
+        borderRadius: '10px',
+        padding: '10px 14px',
+        fontSize: '12px',
+        fontFamily: 'monospace',
+        zIndex: 99999,
+        boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+        pointerEvents: 'none'
+      }}>
+        <div style={{ fontWeight: 'bold', fontSize: '13px' }}>
+          💵 Tốn: ${totalCostUSD.toFixed(2)} USD
+        </div>
+        {sceneCosts.map((item) => (
+          <div key={item.scene} style={{ color: '#94a3b8', marginTop: '2px' }}>
+            Cảnh {item.scene}: ${item.cost.toFixed(2)}
+          </div>
+        ))}
+
+      </div>
     </div>
   );
 }
