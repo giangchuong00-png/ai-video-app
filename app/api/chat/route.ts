@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
-
+import {
+  createGeminiRetryBudget,
+  type GeminiRetryBudget,
+  getGeminiErrorCategory,
+  isGeminiPermanentError,
+  withGeminiRetry,
+} from "@/lib/gemini-retry";
 // ==========================================================
 // TYPES
 // ==========================================================
@@ -615,12 +621,14 @@ async function adaptLongScenesWithGemini({
   productIdentity,
   characterIdentity,
   candidateModels,
+  retryBudget,
 }: {
   ai: GoogleGenAI;
   scenes: any[];
   productIdentity: any;
   characterIdentity: any;
   candidateModels: string[];
+  retryBudget: GeminiRetryBudget;
 }): Promise<{
   scenes: any[];
   used: boolean;
@@ -826,29 +834,36 @@ Không Markdown.
       );
 
       const response =
-        await ai.models.generateContent(
-          {
-            model:
-              modelName,
-
-            contents: [
+        await withGeminiRetry(
+          () =>
+            ai.models.generateContent(
               {
-                role:
-                  "user",
+                model:
+                  modelName,
 
-                parts: [
+                contents: [
                   {
-                    text:
-                      adapterPrompt,
+                    role:
+                      "user",
+
+                    parts: [
+                      {
+                        text:
+                          adapterPrompt,
+                      },
+                    ],
                   },
                 ],
-              },
-            ],
 
-            config: {
-              responseMimeType:
-                "application/json",
-            },
+                config: {
+                  responseMimeType:
+                    "application/json",
+                },
+              }
+            ),
+          {
+            label: `Duration Adapter ${modelName}`,
+            budget: retryBudget,
           }
         );
 
@@ -978,13 +993,16 @@ Không Markdown.
         fallbackUsed:
           false,
       };
-    } catch (
-      error
-    ) {
-      console.warn(
-        `[Duration Adapter] ${modelName} lỗi:`,
+      } catch (
         error
-      );
+      ) {
+        if (isGeminiPermanentError(error)) {
+          throw error;
+        }
+
+        console.warn(
+          `[Duration Adapter] ${modelName} unavailable; trying fallback model.`
+        );
     }
   }
 
@@ -1022,10 +1040,12 @@ async function guardVoiceovers({
   ai,
   scenes,
   candidateModels,
+  retryBudget,
 }: {
   ai: GoogleGenAI;
   scenes: any[];
   candidateModels: string[];
+  retryBudget: GeminiRetryBudget;
 }): Promise<{
   scenes: any[];
   changed: number;
@@ -1171,29 +1191,36 @@ Không Markdown.
       );
 
       const response =
-        await ai.models.generateContent(
-          {
-            model:
-              modelName,
-
-            contents: [
+        await withGeminiRetry(
+          () =>
+            ai.models.generateContent(
               {
-                role:
-                  "user",
+                model:
+                  modelName,
 
-                parts: [
+                contents: [
                   {
-                    text:
-                      prompt,
+                    role:
+                      "user",
+
+                    parts: [
+                      {
+                        text:
+                          prompt,
+                      },
+                    ],
                   },
                 ],
-              },
-            ],
 
-            config: {
-              responseMimeType:
-                "application/json",
-            },
+                config: {
+                  responseMimeType:
+                    "application/json",
+                },
+              }
+            ),
+          {
+            label: `Voiceover Guard ${modelName}`,
+            budget: retryBudget,
           }
         );
 
@@ -1329,13 +1356,16 @@ Không Markdown.
         model:
           modelName,
       };
-    } catch (
-      error
-    ) {
-      console.warn(
-        `[Voiceover Guard] ${modelName} lỗi:`,
+      } catch (
         error
-      );
+      ) {
+        if (isGeminiPermanentError(error)) {
+          throw error;
+        }
+
+        console.warn(
+          `[Voiceover Guard] ${modelName} unavailable; trying fallback model.`
+        );
     }
   }
 
@@ -1955,6 +1985,12 @@ export async function POST(
         "gemini-3.5-flash-lite",
       ];
 
+    const retryBudget =
+      createGeminiRetryBudget({
+        maxAttempts: 9,
+        maxElapsedMs: 45000,
+      });
+
     // ======================================================
     // CREATIVE ROUTE
     // ======================================================
@@ -2121,35 +2157,30 @@ YÊU CẦU
           `[Reelbo Director] thử model ${modelName}`
         );
 
-        const response =
-          await ai.models.generateContent(
-            {
-              model:
-                modelName,
-
+        const response = await withGeminiRetry(
+          () =>
+            ai.models.generateContent({
+              model: modelName,
               contents: [
                 {
-                  role:
-                    "user",
-
+                  role: "user",
                   parts: [
                     {
-                      text:
-                        userPrompt,
+                      text: userPrompt,
                     },
                   ],
                 },
               ],
-
               config: {
-                systemInstruction:
-                  SYSTEM_PROMPT,
-
-                responseMimeType:
-                  "application/json",
+                systemInstruction: SYSTEM_PROMPT,
+                responseMimeType: "application/json",
               },
-            }
-          );
+            }),
+          {
+            label: `Reelbo Director ${modelName}`,
+            budget: retryBudget,
+          }
+        );
 
         if (
           response.text?.trim()
@@ -2165,9 +2196,12 @@ YÊU CẦU
       } catch (
         modelError
       ) {
+        if (isGeminiPermanentError(modelError)) {
+          throw modelError;
+        }
+
         console.warn(
-          `[Reelbo Director] ${modelName} lỗi:`,
-          modelError
+          `[Reelbo Director] ${modelName} unavailable; trying fallback model.`
         );
       }
     }
@@ -2292,6 +2326,8 @@ YÊU CẦU
               .character_identity,
 
           candidateModels,
+
+          retryBudget,
         }
       );
 
@@ -2371,6 +2407,8 @@ YÊU CẦU
           parsedScript.scenes,
 
         candidateModels,
+
+        retryBudget,
       });
 
     parsedScript.scenes =
@@ -2581,10 +2619,9 @@ YÊU CẦU
         ? error.message
         : "Unknown error";
 
-    console.error(
-      "[Reelbo Script Engine] Error:",
-      error
-    );
+    console.error("[Reelbo Script Engine] Request failed", {
+      category: getGeminiErrorCategory(error),
+    });
 
     return NextResponse.json(
       {

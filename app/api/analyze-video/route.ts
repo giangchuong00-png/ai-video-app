@@ -3,7 +3,13 @@ import { GoogleGenAI } from "@google/genai";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
-
+import {
+  consumeGeminiOperationBudget,
+  createGeminiRetryBudget,
+  getGeminiErrorCategory,
+  isGeminiPermanentError,
+  withGeminiRetry,
+} from "@/lib/gemini-retry";
 export const runtime = "nodejs";
 
 export async function POST(req: Request) {
@@ -118,6 +124,10 @@ export async function POST(req: Request) {
     // ======================================================
 
     const ai = new GoogleGenAI({ apiKey });
+    const retryBudget = createGeminiRetryBudget({
+      maxAttempts: 48,
+      maxElapsedMs: 45000,
+    });
 
     console.log("[Reelbo Analyzer] Upload video lên Gemini...");
 
@@ -125,6 +135,7 @@ export async function POST(req: Request) {
     // 3. UPLOAD VIDEO LÊN GEMINI FILES
     // ======================================================
 
+    consumeGeminiOperationBudget(retryBudget);
     const uploadedFile = await ai.files.upload({
       file: tempFilePath,
       config: {
@@ -150,6 +161,7 @@ export async function POST(req: Request) {
 
       await new Promise((resolve) => setTimeout(resolve, 1500));
 
+      consumeGeminiOperationBudget(retryBudget);
       processedFile = await ai.files.get({
         name: uploadedFile.name,
       });
@@ -366,37 +378,47 @@ OUTPUT JSON FORMAT:
       try {
         console.log(`[Reelbo Analyzer] Đang phân tích bằng ${modelName}...`);
 
-        const response = await ai.models.generateContent({
-          model: modelName,
-          contents: [
-            {
-              role: "user",
-              parts: [
+        const response = await withGeminiRetry(
+          () =>
+            ai.models.generateContent({
+              model: modelName,
+              contents: [
                 {
-                  fileData: {
-                    fileUri: processedFile.uri!,
-                    mimeType: processedFile.mimeType || mimeType,
-                  },
-                },
-                {
-                  text: analysisPrompt,
+                  role: "user",
+                  parts: [
+                    {
+                      fileData: {
+                        fileUri: processedFile.uri!,
+                        mimeType: processedFile.mimeType || mimeType,
+                      },
+                    },
+                    {
+                      text: analysisPrompt,
+                    },
+                  ],
                 },
               ],
-            },
-          ],
-          config: {
-            responseMimeType: "application/json",
-          },
-        });
+              config: {
+                responseMimeType: "application/json",
+              },
+            }),
+          {
+            label: `Reelbo Analyzer ${modelName}`,
+            budget: retryBudget,
+          }
+        );
         if (response.text?.trim()) {
             responseText = response.text.trim();
             usedModel = modelName;
             break;
           }
           } catch (modelError) {
+            if (isGeminiPermanentError(modelError)) {
+              throw modelError;
+            }
+
             console.warn(
-              `[Reelbo Analyzer] ${modelName} lỗi:`,
-              modelError
+              `[Reelbo Analyzer] ${modelName} unavailable; trying fallback model.`
             );
           }
           }
@@ -467,7 +489,9 @@ OUTPUT JSON FORMAT:
         },
       });
   } catch (error: any) {
-    console.error("[Reelbo Analyzer] Error:", error);
+    console.error("[Reelbo Analyzer] Request failed", {
+      category: getGeminiErrorCategory(error),
+    });
 
     return NextResponse.json(
       {
